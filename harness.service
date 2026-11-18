@@ -1,0 +1,17 @@
+# Install: mkdir -p ~/.config/systemd/user && cp harness.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now harness
+#   loginctl enable-linger $USER    # keep running after logout
+[Unit]
+Description=ChocoAI coding agent harness
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/ChocoAI-harness
+EnvironmentFile=-%h/ChocoAI-harness/.env
+ExecStart=/usr/bin/python3 harness.py --serve 8080 --auto-approve
+Restart=on-failure
+RestartSec=5
+MemoryMax=200M
+
+[Install]
+WantedBy=default.target
