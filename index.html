@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChocoAI</title>
+<style>
+:root{--bg:#fff;--panel:#f6f6f7;--fg:#1c1c1e;--mute:#6b6b70;--line:#e3e3e6;--accent:#7a4a2b;--user:#efe7e0;--code:#f0f0f2}
+@media (prefers-color-scheme:dark){:root{--bg:#18181a;--panel:#212124;--fg:#ececee;--mute:#9a9aa0;--line:#333338;--accent:#d49a6a;--user:#2e2722;--code:#101012}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,sans-serif;display:flex}
+button{font:inherit;color:inherit;cursor:pointer}
+#side{width:260px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:12px;gap:8px}
+#side .btn{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;text-align:left}
+#list{flex:1;overflow:auto;display:flex;flex-direction:column;gap:2px}
+.chat{display:flex;align-items:center;border-radius:8px;padding:6px 8px;cursor:pointer;gap:4px}
+.chat:hover,.chat.on{background:var(--line)}
+.chat span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat button{border:0;background:none;color:var(--mute);padding:0 4px}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#top{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line)}
+#top b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#menu{display:none;border:0;background:none;font-size:20px}
+#msgs{flex:1;overflow:auto;padding:16px}
+.col{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.u{align-self:flex-end;background:var(--user);padding:8px 14px;border-radius:14px;max-width:85%;white-space:pre-wrap;word-break:break-word}
+.a{word-break:break-word}
+.a pre{background:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;font-size:13px}
+.a code{background:var(--code);padding:1px 4px;border-radius:4px;font-size:13px}
+.a pre code{padding:0;background:none}
+details{border:1px solid var(--line);border-radius:8px;margin:6px 0;color:var(--mute)}
+details summary{cursor:pointer;padding:6px 10px;list-style:none;user-select:none}
+details summary::before{content:"▸ ";display:inline-block;width:1em}
+details[open] summary::before{content:"▾ "}
+details .in{padding:0 10px 8px;white-space:pre-wrap;font-size:13px;max-height:320px;overflow:auto}
+details pre{margin:4px 0;white-space:pre-wrap;color:var(--fg);background:var(--code);padding:6px 8px;border-radius:6px;font-size:12px}
+.err{color:#c0392b}
+#bar{padding:12px 16px 16px}
+#box{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:flex-end;border:1px solid var(--line);border-radius:14px;padding:8px;background:var(--panel)}
+textarea{flex:1;resize:none;border:0;background:none;color:inherit;font:inherit;outline:none;max-height:200px}
+#go{border:0;background:var(--accent);color:#fff;border-radius:10px;padding:6px 14px}
+.empty{margin:auto;color:var(--mute);text-align:center}
+@media (max-width:720px){#side{position:fixed;inset:0 auto 0 0;z-index:5;transform:translateX(-100%);transition:transform .2s}
+body.open #side{transform:none}#menu{display:block}}
+</style>
+</head>
+<body>
+<aside id="side">
+  <button class="btn" id="new">+ New chat</button>
+  <div id="list"></div>
+  <button class="btn" id="tok">Access token…</button>
+</aside>
+<section id="main">
+  <div id="top"><button id="menu" aria-label="Chats">☰</button><b id="title">ChocoAI</b></div>
+  <div id="msgs"><div class="col" id="col"></div></div>
+  <div id="bar"><div id="box">
+    <textarea id="in" rows="1" placeholder="Give the agent a task…"></textarea>
+    <button id="go">Send</button>
+  </div></div>
+</section>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// localStorage can throw (private mode); fall back to in-memory
+const mem = {};
+const ls = {get:k=>{try{return localStorage.getItem(k)}catch{return mem[k]??null}},
+            set:(k,v)=>{try{localStorage.setItem(k,v)}catch{mem[k]=v}}};
+let chats = JSON.parse(ls.get('choco.chats') || '[]');
+let cur = ls.get('choco.cur');
+let token = ls.get('choco.token') || '';
+let busy = false, ctrl = null;
+const save = () => { ls.set('choco.chats', JSON.stringify(chats)); ls.set('choco.cur', cur || ''); };
+const chat = () => chats.find(c => c.id === cur);
+
+function newChat(){
+  if (busy) return;
+  const c = {id: Date.now().toString(36), sid: null, title: '', msgs: []};
+  chats.unshift(c); cur = c.id; save(); renderAll();
+}
+
+// tiny markdown: fenced + inline code, bold, line breaks. Escapes first, so model output can't inject HTML.
+function md(s){
+  const blocks = [];
+  s = esc(s).replace(/```\w*\n?([\s\S]*?)(```|$)/g, (_, c) => '\0' + (blocks.push(c) - 1) + '\0');
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+  return s.replace(/\0(\d+)\0/g, (_, i) => '<pre><code>' + blocks[i] + '</code></pre>');
+}
+
+function partHTML(p, mi, pi, last){
+  const open = p.open ?? (p.k === 'think' && busy && last); // thinking is open while streaming, tools start closed
+  const att = `data-m="${mi}" data-p="${pi}"` + (open ? ' open' : '');
+  if (p.k === 'text') return md(p.text);
+  if (p.k === 'error') return `<div class="err">${esc(p.text)}</div>`;
+  if (p.k === 'think') {
+    const label = p.ms == null ? 'Thinking…' : `Thought for ${Math.max(1, Math.round(p.ms / 1000))}s`;
+    return `<details ${att}><summary>${label}</summary><div class="in">${esc(p.text)}</div></details>`;
+  }
+  const a = p.args || {}, hint = typeof a === 'object' ? (a.path || a.command || '') : '';
+  const res = p.result == null ? 'running…' : esc(p.result);
+  return `<details ${att}><summary>${esc(p.name)} ${esc(String(hint).slice(0, 60))}</summary>` +
+         `<div class="in"><pre>${esc(typeof a === 'string' ? a : JSON.stringify(a, null, 1))}</pre><pre>${res}</pre></div></details>`;
+}
+
+function msgEl(m, mi, isLast){
+  const d = document.createElement('div');
+  if (m.role === 'user') { d.className = 'u'; d.textContent = m.text; return d; }
+  d.className = 'a';
+  d.innerHTML = m.parts.map((p, pi) => partHTML(p, mi, pi, isLast && pi === m.parts.length - 1)).join('')
+    || (busy && isLast ? '<span style="color:var(--mute)">…</span>' : '');
+  return d;
+}
+
+function renderAll(){
+  const c = chat();
+  $('title').textContent = c && c.title || 'ChocoAI';
+  $('list').innerHTML = '';
+  chats.forEach(x => {
+    const r = document.createElement('div'); r.className = 'chat' + (x.id === cur ? ' on' : '');
+    const t = document.createElement('span'); t.textContent = x.title || 'New chat';
+    const del = document.createElement('button'); del.textContent = '×'; del.title = 'Delete';
+    r.append(t, del);
+    r.onclick = () => { if (!busy) { cur = x.id; save(); renderAll(); document.body.classList.remove('open'); } };
+    del.onclick = e => { e.stopPropagation(); if (busy || !confirm('Delete this chat?')) return;
+      chats = chats.filter(y => y !== x); if (cur === x.id) cur = chats[0]?.id; save(); chats.length ? renderAll() : newChat(); };
+    $('list').append(r);
+  });
+  const col = $('col'); col.innerHTML = '';
+  if (!c || !c.msgs.length) col.innerHTML = '<div class="empty">What should the agent work on?</div>';
+  else c.msgs.forEach((m, i) => col.append(msgEl(m, i, i === c.msgs.length - 1)));
+  scrollDown(true);
+}
+
+function updateLast(){
+  const c = chat(), col = $('col'), i = c.msgs.length - 1;
+  col.replaceChild(msgEl(c.msgs[i], i, true), col.lastElementChild);
+  scrollDown();
+}
+function scrollDown(force){
+  const m = $('msgs');
+  if (force || m.scrollHeight - m.scrollTop - m.clientHeight < 120) m.scrollTop = m.scrollHeight;
+}
+
+// toggling by click (not the 'toggle' event, which also fires on programmatic renders)
+$('col').addEventListener('click', e => {
+  const s = e.target.closest('summary'); if (!s) return;
+  const d = s.parentElement, c = chat();
+  c.msgs[+d.dataset.m].parts[+d.dataset.p].open = !d.open;
+});
+
+function onEvent(ev, c, ai){
+  const parts = ai.parts, last = parts[parts.length - 1];
+  const endThink = () => { if (last && last.k === 'think' && last.ms == null) last.ms = Date.now() - last.t0; };
+  if (ev.t === 'session') c.sid = ev.id;
+  else if (ev.t === 'think') {
+    if (last && last.k === 'think' && last.ms == null) last.text += ev.d;
+    else { endThink(); parts.push({k: 'think', text: ev.d, t0: Date.now()}); }
+  } else if (ev.t === 'text') {
+    if (last && last.k === 'text') last.text += ev.d; else { endThink(); parts.push({k: 'text', text: ev.d}); }
+  } else if (ev.t === 'tool') { endThink(); parts.push({k: 'tool', id: ev.id, name: ev.name, args: ev.args}); }
+  else if (ev.t === 'result') { const p = parts.find(p => p.k === 'tool' && p.id === ev.id); if (p) p.result = ev.d; }
+  else if (ev.t === 'error') { endThink(); parts.push({k: 'error', text: ev.d}); }
+  else if (ev.t === 'done') endThink();
+}
+
+let raf = 0;
+const schedule = () => raf || (raf = requestAnimationFrame(() => { raf = 0; updateLast(); }));
+
+async function send(text){
+  const c = chat(), ai = {role: 'ai', parts: []};
+  c.msgs.push({role: 'user', text}, ai);
+  if (!c.title) c.title = text.slice(0, 40);
+  busy = true; $('go').textContent = 'Stop'; ctrl = new AbortController(); renderAll();
+  try {
+    const r = await fetch('/task', {method: 'POST', signal: ctrl.signal,
+      headers: {'Content-Type': 'application/json', ...(token && {Authorization: 'Bearer ' + token})},
+      body: JSON.stringify({goal: text, session: c.sid, stream: true})});
+    if (r.status === 401) { c.msgs.length -= 2; if (!c.msgs.length) c.title = '';
+      busy = false; askToken('Access token required'); return finish(text); }
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'HTTP ' + r.status);
+    const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) {
+      const {done, value} = await rd.read(); if (done) break;
+      buf += dec.decode(value, {stream: true});
+      for (let i; (i = buf.indexOf('\n\n')) >= 0;) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (line.startsWith('data:')) { onEvent(JSON.parse(line.slice(5)), c, ai); schedule(); }
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') ai.parts.push({k: 'error', text: String(e.message || e)});
+    else ai.parts.push({k: 'error', text: 'Stopped (the server may still finish the run)'});
+  }
+  finish();
+}
+function finish(retry){
+  busy = false; $('go').textContent = 'Send'; ctrl = null; save(); renderAll();
+  if (retry) $('in').value = retry;
+}
+
+function askToken(msg){
+  const t = prompt(msg || 'Access token (stored in this browser only)', token);
+  if (t !== null) { token = t.trim(); ls.set('choco.token', token); }
+}
+
+function submit(){
+  if (busy) return ctrl && ctrl.abort();
+  const t = $('in').value.trim(); if (!t) return;
+  $('in').value = ''; grow(); send(t);
+}
+const grow = () => { const i = $('in'); i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 200) + 'px'; };
+$('in').addEventListener('input', grow);
+$('in').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } });
+$('go').onclick = submit;
+$('new').onclick = () => { newChat(); document.body.classList.remove('open'); };
+$('tok').onclick = () => askToken();
+$('menu').onclick = () => document.body.classList.toggle('open');
+
+if (!chat()) { cur = chats[0]?.id; }
+chat() ? renderAll() : newChat();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Server copy lives in ~/harness-ai/ next to its .env (HARNESS_OPEN / HARNESS_TOKEN, BASE_URL, API_KEY, MODEL).
+services:
+  harness:
+    container_name: choco-harness
+    image: ghcr.io/chocorot/choco-harness:latest
+    restart: unless-stopped
+    env_file: .env
+    ports: ["127.0.0.1:8421:8080"]  # cloudflared tunnel -> http://localhost:8421
+    mem_limit: 256m
+    cpus: 1
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    volumes:
+      - harness-data:/data
+      - harness-ws:/workspace
+
+volumes:
+  harness-data: {external: true}
+  harness-ws: {external: true}

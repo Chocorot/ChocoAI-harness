@@ -1,7 +1,10 @@
-import io
 import json
+import os
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import db
@@ -84,6 +87,7 @@ class CompactTests(unittest.TestCase):
 class SSETests(unittest.TestCase):
     def test_text_and_split_tool_calls(self):
         ev = [
+            {"choices": [{"delta": {"reasoning_content": "hm"}}]},
             {"choices": [{"delta": {"content": "Hel"}}]},
             {"choices": [{"delta": {"content": "lo"}}]},
             {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "a", "function": {"name": "read_file", "arguments": '{"pa'}}]}}]},
@@ -92,9 +96,10 @@ class SSETests(unittest.TestCase):
             {"choices": [], "usage": {"prompt_tokens": 5, "completion_tokens": 2}},
         ]
         lines = [b"data: " + json.dumps(e).encode() for e in ev] + [b"", b"data: [DONE]"]
-        out = io.StringIO()
-        msg, usage = harness.parse_sse(lines, out)
-        self.assertEqual(out.getvalue(), "Hello")
+        evs = []
+        msg, usage = harness.parse_sse(lines, evs.append)
+        self.assertEqual("".join(e["d"] for e in evs if e["t"] == "text"), "Hello")
+        self.assertEqual("".join(e["d"] for e in evs if e["t"] == "think"), "hm")
         self.assertEqual(msg["content"], "Hello")
         self.assertEqual([c["function"]["arguments"] for c in msg["tool_calls"]], ['{"path":"f"}', "{}"])
         self.assertEqual(usage["prompt_tokens"], 5)
@@ -112,7 +117,7 @@ class AgentTests(unittest.TestCase):
                     "name": "write_file", "arguments": json.dumps({"path": "f.txt", "content": "hi"})}}]},
                 {"role": "assistant", "content": "done"},
             ])
-            out = harness.run_agent(conn, sid, messages, ws, True, chat_fn=lambda m: (next(replies), {}))
+            out = harness.run_agent(conn, sid, messages, ws, True, chat_fn=lambda m, e: (next(replies), {}))
             self.assertEqual(out, "done")
             self.assertEqual((ws / "f.txt").read_text(), "hi")
             self.assertEqual(len(db.load(conn, sid)), 5)  # system, user, assistant, tool, assistant
@@ -121,9 +126,39 @@ class AgentTests(unittest.TestCase):
             self.assertEqual((sid2, len(resumed)), (sid, 6))
             loop = {"role": "assistant", "content": None, "tool_calls": [{"id": "x", "type": "function", "function": {
                 "name": "run_bash", "arguments": "{bad"}}]}
-            out = harness.run_agent(conn, sid, resumed, ws, True, max_turns=2, chat_fn=lambda m: (dict(loop), {}))
+            out = harness.run_agent(conn, sid, resumed, ws, True, max_turns=2, chat_fn=lambda m, e: (dict(loop), {}))
             self.assertIn("max_turns", out)
             self.assertIn("invalid JSON", resumed[-1]["content"])
+
+
+class ServerTests(unittest.TestCase):
+    def test_page_auth_and_stream(self):
+        def fake_chat(messages, emit):
+            emit({"t": "think", "d": "hmm"})
+            emit({"t": "text", "d": "hi"})
+            return {"role": "assistant", "content": "hi"}, {}
+
+        with tempfile.TemporaryDirectory() as d:
+            os.environ.update(HARNESS_DB=f"{d}/h.db", HARNESS_TOKEN="tok")
+            real, harness.chat = harness.chat, fake_chat
+            srv = harness.make_server("127.0.0.1", 0, Path(d), 3)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            base = f"http://127.0.0.1:{srv.server_address[1]}"
+            try:
+                self.assertIn(b"<title>ChocoAI", urllib.request.urlopen(base + "/").read())
+                post = lambda tok: urllib.request.Request(
+                    base + "/task", json.dumps({"goal": "x", "stream": True}).encode(),
+                    {"Authorization": f"Bearer {tok}"})
+                with self.assertRaises(urllib.error.HTTPError) as cm:
+                    urllib.request.urlopen(post("bad"))
+                self.assertEqual(cm.exception.code, 401)
+                body = urllib.request.urlopen(post("tok")).read().decode()
+                evs = [json.loads(x[5:]) for x in body.split("\n\n") if x.startswith("data:")]
+                self.assertEqual([e["t"] for e in evs], ["session", "think", "text", "done"])
+            finally:
+                harness.chat = real
+                srv.shutdown()
+                del os.environ["HARNESS_TOKEN"]
 
 
 if __name__ == "__main__":

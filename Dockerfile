@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 RUN useradd -m app && mkdir /data /workspace && chown app /data /workspace
 WORKDIR /app
-COPY harness.py tools.py db.py ./
+COPY harness.py tools.py db.py index.html ./
 USER app
 ENV HARNESS_DB=/data/harness.db PYTHONUNBUFFERED=1
 VOLUME ["/data", "/workspace"]

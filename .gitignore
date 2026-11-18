@@ -1,0 +1,4 @@
+harness.db*
+workspace/
+.env
+__pycache__/
