@@ -82,7 +82,7 @@ systemd user unit: copy the repo to `~/ChocoAI-harness`, then follow the 3 comma
 Push to `main` -> GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)) runs the tests, builds the image and
 pushes `ghcr.io/chocorot/choco-harness:latest`. On the server, [docker-compose.yml](docker-compose.yml) runs that image
 with the watchtower label, so watchtower (polls every 5 min) pulls and restarts it. No SSH secrets needed.
-Server setup is one-time: copy `docker-compose.yml` next to `.env` in `~/harness-ai/`, then `docker compose up -d`.
+Server setup is one-time: copy `docker-compose.yml` next to `.env` in `~/ChocoAI-harness/`, then `docker compose up -d`.
 Named volumes `harness-data` / `harness-ws` survive updates. Roll back by pinning the compose image to a
 `sha-<commit>` tag.
 
