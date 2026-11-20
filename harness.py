@@ -6,24 +6,18 @@ import json
 import os
 import sys
 import threading
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import db
+import settings
 import tools
 
-SYSTEM = (
-    "You are a coding agent working in a workspace directory. Complete the user's goal with the tools: "
-    "read_file, edit_file, write_file, run_bash. Rules: "
-    "read only the line ranges you need; "
-    "prefer edit_file (exact unique old_text) over rewriting files; "
-    "check your work by running it; "
-    "keep replies short; "
-    "when done, reply with a brief summary and call no tools."
-)
-COMPACT_AT = 11_000  # est. tokens; context window is 16K, leave room for the reply
-KEEP_TURNS = 4
+VERSION = "0.2.0"
+
+COMPACT_AT = settings.default("compact_at")  # default only; the live value is settings.get("compact_at")
 
 
 def load_env(path=".env"):
@@ -40,13 +34,14 @@ def est_tokens(messages):
 
 
 def compact(messages):
-    """Shrink old tool traffic; keep system, original goal and the last KEEP_TURNS turns intact."""
-    if est_tokens(messages) <= COMPACT_AT:
+    """Shrink old tool traffic; keep system, original goal and the last `keep_turns` turns intact."""
+    if est_tokens(messages) <= settings.get("compact_at"):
         return messages
+    keep = settings.get("keep_turns")
     turns = [i for i, m in enumerate(messages) if m["role"] == "assistant"]
-    if len(turns) <= KEEP_TURNS:
+    if len(turns) <= keep:
         return messages
-    cut = turns[-KEEP_TURNS]  # a turn = assistant msg + its tool results, so cutting here never orphans a tool msg
+    cut = turns[-keep]  # a turn = assistant msg + its tool results, so cutting here never orphans a tool msg
     names = {tc["id"]: tc["function"]["name"] for m in messages[:cut] for tc in m.get("tool_calls", [])}
     out = messages[:2]
     for m in messages[2:cut]:
@@ -112,8 +107,11 @@ def parse_sse(lines, emit=cli_emit):
 
 
 def chat(messages, emit=cli_emit):
-    body = {"model": os.environ.get("MODEL", "qwen/qwen3.6-35b-a3b"), "messages": messages,
+    body = {"model": settings.get("model"), "messages": messages,
             "tools": tools.SCHEMAS, "stream": True, "stream_options": {"include_usage": True}}
+    for k in ("temperature", "max_tokens"):  # optional: only sent when set
+        if settings.get(k) is not None:
+            body[k] = settings.get(k)
     req = urllib.request.Request(
         os.environ.get("BASE_URL", "http://localhost:1235/v1").rstrip("/") + "/chat/completions",
         json.dumps(body).encode(),
@@ -123,9 +121,10 @@ def chat(messages, emit=cli_emit):
         return parse_sse(r, emit)
 
 
-def run_agent(conn, sid, messages, ws, auto_approve, max_turns=15, chat_fn=None, emit=cli_emit):
+def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit):
     """Loop until the model answers without tool calls. Returns the final text."""
     chat_fn = chat_fn or chat  # resolved at call time so tests can patch it
+    max_turns = max_turns or settings.get("max_turns")  # an explicit value (CLI flag) wins over the saved setting
     for turn in range(max_turns):
         sent = compact(messages)
         msg, usage = chat_fn(sent, emit)
@@ -157,14 +156,28 @@ def start(conn, goal, session):
         if not db.session_exists(conn, session):
             sys.exit(f"no such session: {session}")
         sid, messages = session, db.load(conn, session)
+        if messages and messages[0]["role"] == "system":  # a saved prompt edit applies to resumed sessions too
+            messages[0] = {"role": "system", "content": settings.get("system_prompt")}
     else:
         sid = db.new_session(conn, goal)
-        messages = [{"role": "system", "content": SYSTEM}]
+        messages = [{"role": "system", "content": settings.get("system_prompt")}]
         db.save_msg(conn, sid, messages[0])
     if goal:
         messages.append({"role": "user", "content": goal})
         db.save_msg(conn, sid, messages[-1])
     return sid, messages
+
+
+def manifest(busy):
+    """Self-description for the dashboard: what this harness is, its settings (from settings.FIELDS) and totals."""
+    conn = db.connect()
+    try:
+        stats = db.stats(conn)
+    finally:
+        conn.close()
+    return {"kind": "choco-harness", "name": "ChocoAI harness", "version": VERSION, "status": "busy" if busy else "idle",
+            "backend": {"baseUrl": os.environ.get("BASE_URL", "http://localhost:1235/v1"), "model": settings.get("model")},
+            "settings": settings.manifest(), "stats": stats}
 
 
 def make_server(host, port, ws, max_turns):
@@ -180,7 +193,43 @@ def make_server(host, port, ws, max_turns):
             self.end_headers()
             self.wfile.write(data)
 
+        def _manage(self, method):
+            """Admin API for the dashboard (via the node agent). Its own token, independent of /task. No token set = no API."""
+            tok = os.environ.get("HARNESS_ADMIN_TOKEN")
+            if not tok:
+                return self._send(404, {"error": "not found"})
+            if not hmac.compare_digest(self.headers.get("Authorization", "").encode(), f"Bearer {tok}".encode()):
+                return self._send(401, {"error": "unauthorized"})
+            url = urllib.parse.urlparse(self.path)
+            if method == "GET" and url.path == "/manage/manifest":
+                return self._send(200, manifest(lock.locked()))
+            if method == "GET" and url.path == "/manage/sessions":
+                try:
+                    limit = max(1, min(200, int(urllib.parse.parse_qs(url.query).get("limit", ["50"])[0])))
+                except ValueError:
+                    return self._send(400, {"error": "limit must be a number"})
+                conn = db.connect()
+                try:
+                    return self._send(200, {"sessions": db.list_sessions(conn, limit)})
+                finally:
+                    conn.close()
+            if method == "PUT" and url.path == "/manage/settings":
+                try:
+                    req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                except ValueError:
+                    return self._send(400, {"error": "body must be JSON"})
+                _, err = settings.save(req.get("settings") if isinstance(req, dict) else None)
+                if err:
+                    return self._send(400, {"error": err})
+                return self._send(200, manifest(lock.locked()))
+            self._send(404, {"error": "not found"})
+
+        def do_PUT(self):
+            self._manage("PUT") if self.path.startswith("/manage/") else self._send(404, {"error": "not found"})
+
         def do_GET(self):
+            if self.path.startswith("/manage/"):
+                return self._manage("GET")
             if self.path == "/health":
                 self._send(200, {"ok": True})
             elif self.path in ("/", "/index.html") and page.exists():  # public page; /task is what the token guards
@@ -249,7 +298,7 @@ def main():
     ap.add_argument("--session", type=int, help="resume session id")
     ap.add_argument("--workspace", default="workspace", help="sandbox dir (default ./workspace)")
     ap.add_argument("--auto-approve", action="store_true", help="run bash without y/N prompt")
-    ap.add_argument("--max-turns", type=int, default=15)
+    ap.add_argument("--max-turns", type=int, default=None, help="override the saved max_turns setting (default 15)")
     ap.add_argument("--serve", type=int, metavar="PORT", help="run HTTP server: GET /health, POST /task")
     ap.add_argument("--host", default="127.0.0.1", help="bind address for --serve")
     a = ap.parse_args()

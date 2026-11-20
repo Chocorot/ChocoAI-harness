@@ -6,9 +6,11 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 import db
 import harness
+import settings
 import tools
 
 
@@ -159,6 +161,181 @@ class ServerTests(unittest.TestCase):
                 harness.chat = real
                 srv.shutdown()
                 del os.environ["HARNESS_TOKEN"]
+
+
+class SettingsBase(unittest.TestCase):
+    """Each test gets its own settings file and a clean environment."""
+
+    def setUp(self):
+        self.t = tempfile.TemporaryDirectory()
+        self.env = mock.patch.dict(os.environ, {"HARNESS_SETTINGS": f"{self.t.name}/settings.json",
+                                                "HARNESS_DB": f"{self.t.name}/h.db"})
+        self.env.start()
+        os.environ.pop("MODEL", None)
+
+    def tearDown(self):
+        self.env.stop()
+        self.t.cleanup()
+
+
+class SettingsTests(SettingsBase):
+    def test_defaults_and_env_default(self):
+        self.assertEqual((settings.get("max_turns"), settings.get("keep_turns"), settings.get("temperature")), (15, 4, None))
+        os.environ["MODEL"] = "other/model"
+        self.assertEqual(settings.get("model"), "other/model")  # env supplies the default, a saved value still wins
+        settings.save({"model": "saved/model"})
+        self.assertEqual(settings.get("model"), "saved/model")
+
+    def test_validation_is_all_or_nothing(self):
+        bad = [{}, [], {"nope": 1}, {"max_turns": 0}, {"max_turns": "5"}, {"max_turns": True}, {"max_turns": 1.5},
+               {"max_turns": 101}, {"temperature": 3}, {"temperature": float("nan")}, {"system_prompt": "  "},
+               {"system_prompt": "x" * 8001}, {"model": 5}]
+        for upd in bad:
+            _, err = settings.save(upd)
+            self.assertTrue(err, upd)
+        _, err = settings.save({"max_turns": 9, "temperature": 99})  # one good, one bad: nothing may be written
+        self.assertTrue(err)
+        self.assertEqual(settings.get("max_turns"), 15)
+        self.assertFalse(os.path.exists(settings.path()))
+
+    def test_save_backup_reset_and_optional(self):
+        cur, err = settings.save({"max_turns": 9, "temperature": 0.2})
+        self.assertEqual((err, cur["max_turns"], cur["temperature"]), (None, 9, 0.2))
+        settings.save({"keep_turns": 2})
+        self.assertTrue(os.path.exists(settings.path() + ".bak"))  # previous version kept
+        cur, _ = settings.save({"max_turns": None, "temperature": None})  # null = back to default / unset
+        self.assertEqual((cur["max_turns"], cur["temperature"], cur["keep_turns"]), (15, None, 2))
+
+    def test_a_bad_file_never_breaks_a_run(self):
+        Path(settings.path()).write_text("{not json")
+        self.assertEqual(settings.get("max_turns"), 15)
+        Path(settings.path()).write_text(json.dumps({"max_turns": -4, "keep_turns": 3, "junk": 1}))
+        self.assertEqual((settings.get("max_turns"), settings.get("keep_turns")), (15, 3))  # invalid value ignored, valid kept
+
+    def test_manifest_lists_every_field_plus_read_only_backend(self):
+        os.environ["BASE_URL"] = "http://x/v1"
+        m = {f["key"]: f for f in settings.manifest()}
+        self.assertEqual(set(m), {f["key"] for f in settings.FIELDS} | {"base_url"})
+        self.assertEqual((m["base_url"]["type"], m["base_url"]["value"]), ("readonly", "http://x/v1"))
+        self.assertEqual((m["max_turns"]["value"], m["max_turns"]["default"], m["max_turns"]["min"]), (15, 15, 1))
+        self.assertTrue(m["temperature"]["optional"])
+
+    def test_a_new_row_is_all_it_takes(self):
+        row = {"key": "top_p", "label": "Top P", "type": "float", "default": None, "optional": True, "min": 0, "max": 1, "help": "h"}
+        with mock.patch.object(settings, "FIELDS", settings.FIELDS + [row]), \
+                mock.patch.object(settings, "BY_KEY", {**settings.BY_KEY, "top_p": row}):
+            self.assertIn("top_p", {f["key"] for f in settings.manifest()})
+            self.assertEqual(settings.save({"top_p": 0.9})[0]["top_p"], 0.9)
+            self.assertTrue(settings.save({"top_p": 2})[1])
+
+
+class SettingsAppliedTests(SettingsBase):
+    def test_compaction_follows_settings(self):
+        m = convo(10)
+        self.assertIsNot(harness.compact(m), m)
+        settings.save({"compact_at": 200000})
+        self.assertIs(harness.compact(m), m)  # threshold raised: nothing to shrink
+        settings.save({"compact_at": 1000, "keep_turns": 2})
+        self.assertEqual(harness.compact(m)[-4:], m[-4:])  # last 2 turns verbatim
+
+    def test_system_prompt_applies_to_new_and_resumed_sessions(self):
+        conn = db.connect()
+        sid, msgs = harness.start(conn, "goal", None)
+        self.assertEqual(msgs[0]["content"], settings.SYSTEM_PROMPT)
+        settings.save({"system_prompt": "Be terse."})
+        _, resumed = harness.start(conn, "more", sid)
+        self.assertEqual(resumed[0]["content"], "Be terse.")
+        _, fresh = harness.start(conn, "new", None)
+        self.assertEqual(fresh[0]["content"], "Be terse.")
+
+    def test_max_turns_setting_and_explicit_override(self):
+        conn = db.connect()
+        loop = {"role": "assistant", "content": None, "tool_calls": [{"id": "x", "type": "function", "function": {
+            "name": "run_bash", "arguments": "{bad"}}]}
+        settings.save({"max_turns": 2})
+        sid, msgs = harness.start(conn, "g", None)
+        out = harness.run_agent(conn, sid, msgs, Path(self.t.name), True, chat_fn=lambda m, e: (dict(loop), {}))
+        self.assertIn("max_turns=2", out)
+        out = harness.run_agent(conn, sid, msgs, Path(self.t.name), True, max_turns=1, chat_fn=lambda m, e: (dict(loop), {}))
+        self.assertIn("max_turns=1", out)  # a CLI flag beats the saved value
+
+    def test_chat_sends_model_and_optional_params_only_when_set(self):
+        sent = []
+
+        def fake_urlopen(req, timeout=None):
+            sent.append(json.loads(req.data))
+            return mock.MagicMock(__enter__=lambda s: [], __exit__=lambda *a: False)
+
+        with mock.patch.object(harness.urllib.request, "urlopen", fake_urlopen):
+            harness.chat([{"role": "user", "content": "x"}])
+            settings.save({"model": "m2", "temperature": 0.3, "max_tokens": 256})
+            harness.chat([{"role": "user", "content": "x"}])
+        self.assertNotIn("temperature", sent[0])
+        self.assertEqual((sent[1]["model"], sent[1]["temperature"], sent[1]["max_tokens"]), ("m2", 0.3, 256))
+
+
+class ManageApiTests(SettingsBase):
+    def serve(self, **env):
+        os.environ.update(env)
+        srv = harness.make_server("127.0.0.1", 0, Path(self.t.name), None)
+        threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        return f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def call(self, base, path, method="GET", body=None, token="adm"):
+        req = urllib.request.Request(base + path, None if body is None else json.dumps(body).encode(), method=method,
+                                     headers={"Authorization": f"Bearer {token}"} if token else {})
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
+
+    def test_disabled_without_admin_token_and_auth(self):
+        base = self.serve(HARNESS_TOKEN="tok")
+        os.environ.pop("HARNESS_ADMIN_TOKEN", None)
+        self.assertEqual(self.call(base, "/manage/manifest")[0], 404)  # no admin token configured: the API does not exist
+        base = self.serve(HARNESS_ADMIN_TOKEN="adm")
+        self.assertEqual(self.call(base, "/manage/manifest", token=None)[0], 401)
+        self.assertEqual(self.call(base, "/manage/manifest", token="tok")[0], 401)  # the /task token does not open /manage
+        self.assertEqual(self.call(base, "/manage/nope")[0], 404)
+
+    def test_task_token_is_independent(self):
+        base = self.serve(HARNESS_TOKEN="tok", HARNESS_ADMIN_TOKEN="adm")
+        req = urllib.request.Request(base + "/task", json.dumps({"goal": "x"}).encode(), {"Authorization": "Bearer adm"})
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req)
+        self.assertEqual(cm.exception.code, 401)  # the admin token does not run tasks
+
+    def test_manifest_save_and_validation(self):
+        base = self.serve(HARNESS_ADMIN_TOKEN="adm")
+        status, m = self.call(base, "/manage/manifest")
+        self.assertEqual((status, m["kind"], m["status"], m["stats"]["sessions"]), (200, "choco-harness", "idle", 0))
+        self.assertEqual(m["backend"]["model"], settings.get("model"))
+        status, m = self.call(base, "/manage/settings", "PUT", {"settings": {"max_turns": 7, "system_prompt": "Hi."}})
+        self.assertEqual(status, 200)
+        vals = {f["key"]: f["value"] for f in m["settings"]}
+        self.assertEqual((vals["max_turns"], vals["system_prompt"]), (7, "Hi."))
+        status, err = self.call(base, "/manage/settings", "PUT", {"settings": {"max_turns": 0}})
+        self.assertEqual((status, err["error"]), (400, "max_turns must be between 1 and 100"))
+        self.assertEqual(self.call(base, "/manage/settings", "PUT", {"settings": {"zzz": 1}})[0], 400)
+        self.assertEqual(self.call(base, "/manage/settings", "PUT", {})[0], 400)
+        self.assertEqual(settings.get("max_turns"), 7)  # the failed saves changed nothing
+
+    def test_sessions_list(self):
+        conn = db.connect()
+        sid = db.new_session(conn, "g" * 500)
+        db.log_usage(conn, sid, 0, 100, 20, 90)
+        db.log_usage(conn, sid, 1, None, None, 95)  # a backend that reported no tokens
+        db.log_tool(conn, sid, "run_bash", {"command": "ls"}, "ok")
+        conn.close()
+        base = self.serve(HARNESS_ADMIN_TOKEN="adm")
+        status, d = self.call(base, "/manage/sessions?limit=5")
+        (s,) = d["sessions"]
+        self.assertEqual((s["id"], len(s["goal"]), s["turns"], s["tokens"], s["toolCalls"]), (sid, 200, 2, 120, 1))
+        self.assertEqual(self.call(base, "/manage/sessions?limit=abc")[0], 400)
+        self.assertEqual(self.call(base, "/manage/manifest")[1]["stats"]["promptTokens"], 100)
 
 
 if __name__ == "__main__":

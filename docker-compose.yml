@@ -10,6 +10,7 @@ services:
     cpus: 1
     labels:
       - com.centurylinklabs.watchtower.enable=true
+      - choc.ai.harness=http://127.0.0.1:8421  # lets the node agent find this harness (choc-node-agent docs/ai-gateway.md)
     volumes:
       - harness-data:/data
       - harness-ws:/workspace

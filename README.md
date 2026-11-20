@@ -8,6 +8,7 @@ Python 3.11+ standard library only. About 35 MB RSS idle. State lives in one SQL
 | `harness.py` | CLI, agent loop, streaming, context compaction, optional HTTP mode |
 | `tools.py` | The 4 tools (`read_file`, `edit_file`, `write_file`, `run_bash`) and their JSON schemas |
 | `index.html` | Chat web page served at `/` (HTML+JS, no build step) |
+| `settings.py` | The settings table (system prompt, model, max turns, compaction, temperature, max tokens): validation, JSON file next to the DB, manifest |
 | `db.py` | SQLite (`harness.db`): sessions, messages, token usage, tool audit log |
 | `test_harness.py` | Offline tests: `python3 -m unittest test_harness` |
 
@@ -63,6 +64,26 @@ One agent run at a time (others wait; `/health` and `/` stay responsive). `/task
 than 127.0.0.1 (as the Docker image does) refuses to start without `HARNESS_TOKEN` unless you set `HARNESS_OPEN=1` (deliberately unauthenticated: anyone who can reach it can run commands in the container). For a public hostname
 (e.g. a Cloudflare tunnel) also consider Cloudflare Access in front.
 
+## Settings and the manage API (for the status dashboard)
+
+Settings live in ONE table (`settings.py` `FIELDS`). They are saved in `settings.json` next to the DB (`/data/settings.json` in
+Docker, previous version kept as `settings.json.bak`) and re-read on every call, so an edit applies from the next run with no
+restart (also to resumed sessions). `--max-turns` on the command line still beats the saved value. A bad or hand-edited value in
+the file is ignored (the default is used). A new setting = a new row in `FIELDS`; the dashboard shows it with no change.
+
+The dashboard reaches this through the node agent (`choc-node-agent`, `docs/ai-gateway.md` has the contract). Endpoints, all under
+`/manage/` and guarded by their **own** token `HARNESS_ADMIN_TOKEN` (not `HARNESS_TOKEN`; the two do not open each other's routes).
+**No `HARNESS_ADMIN_TOKEN` set = the API does not exist (404).**
+
+```bash
+curl -s localhost:8080/manage/manifest -H "Authorization: Bearer $HARNESS_ADMIN_TOKEN"   # kind, status, backend, settings[], stats
+curl -s -XPUT localhost:8080/manage/settings -H "Authorization: Bearer $HARNESS_ADMIN_TOKEN" \
+  -d '{"settings":{"max_turns":10,"temperature":0.2}}'                                    # all-or-nothing; 400 with the reason
+curl -s "localhost:8080/manage/sessions?limit=20" -H "Authorization: Bearer $HARNESS_ADMIN_TOKEN"
+```
+A `null` value resets a setting to its default. `base_url` is shown read-only (it comes from the `BASE_URL` variable).
+The compose file carries the label `choc.ai.harness=<url>` so the node agent finds the container by itself.
+
 ## Deploy
 
 Docker (`python:3.12-slim`; inside a container `localhost` is the container itself):
@@ -88,7 +109,7 @@ Named volumes `harness-data` / `harness-ws` survive updates. Roll back by pinnin
 
 ## How it works
 
-- **System prompt**: about 90 tokens, so turn-1 prefill is cheap.
+- **System prompt**: about 90 tokens by default, so turn-1 prefill is cheap (editable in the dashboard, 8000 characters max: a long prompt eats the 16K window).
 - **Compaction**: tokens are estimated as `chars / 4`. Above 11,000, each request is sent with older
   history shrunk: `read_file` results become a one-line stub, other tool results are cut to 200 chars,
   large tool-call arguments (e.g. `write_file` content) are dropped. System prompt, original goal and the last
@@ -108,3 +129,4 @@ Inspect the DB: `sqlite3 harness.db "select tool, result from audit order by id 
 - Token counts are estimates. If the real window is exceeded you will get a backend error; lower `COMPACT_AT` in `harness.py`.
 - No retries on backend errors: the run stops and prints the session id so you can resume.
 - Model "thinking" output (`reasoning_content`) is ignored.
+- `/task` runs shell commands: never run it open on a public hostname. Set `HARNESS_TOKEN` (the 2026-11-20 server fix) and consider Cloudflare Access in front.

@@ -52,3 +52,24 @@ def log_tool(db, sid, tool, args, result):
     db.execute("INSERT INTO audit(ts, session, tool, args, result) VALUES(?,?,?,?,?)",
                (time.time(), sid, tool, json.dumps(args)[:2000], str(result)[:500]))
     db.commit()
+
+
+def stats(db):
+    """Totals for the manifest. Token counts are what the backend reported (NULL when it reported none)."""
+    q = lambda sql: db.execute(sql).fetchone()[0]
+    return {"sessions": q("SELECT COUNT(*) FROM sessions"),
+            "turns": q("SELECT COUNT(*) FROM usage"),
+            "promptTokens": q("SELECT COALESCE(SUM(prompt_tokens),0) FROM usage"),
+            "completionTokens": q("SELECT COALESCE(SUM(completion_tokens),0) FROM usage"),
+            "toolCalls": q("SELECT COUNT(*) FROM audit")}
+
+
+def list_sessions(db, limit=50):
+    rows = db.execute(
+        "SELECT s.id, s.goal, s.created,"
+        " (SELECT COUNT(*) FROM usage u WHERE u.session=s.id),"
+        " (SELECT COALESCE(SUM(COALESCE(prompt_tokens,0)+COALESCE(completion_tokens,0)),0) FROM usage u WHERE u.session=s.id),"
+        " (SELECT COUNT(*) FROM audit a WHERE a.session=s.id)"
+        " FROM sessions s ORDER BY s.id DESC LIMIT ?", (limit,))
+    return [{"id": r[0], "goal": (r[1] or "")[:200], "created": r[2], "turns": r[3], "tokens": r[4], "toolCalls": r[5]}
+            for r in rows]
