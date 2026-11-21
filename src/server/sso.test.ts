@@ -84,3 +84,22 @@ test('ssoConfig needs issuer, client id, secret and an explicit redirect URI; ot
   for (const k of Object.keys(env)) assert.equal(ssoConfig({ ...env, [k]: '' }), null, k)
   assert.equal(ssoConfig({ ...env, NEXT_PUBLIC_APP_URL: 'https://ai.test', SSO_REDIRECT_URI: undefined }), null) // no build-time guessing
 })
+
+test('redirects use the public address, never the container bind address (http://0.0.0.0:8080)', async () => {
+  const { ssoCallback, ssoStart } = await import('./auth-routes.ts')
+  const was = { url: process.env.HARNESS_PUBLIC_URL, proxy: process.env.HARNESS_TRUST_PROXY }
+  try {
+    for (const k of ['SSO_ISSUER', 'SSO_CLIENT_ID', 'SSO_CLIENT_SECRET', 'SSO_REDIRECT_URI']) delete process.env[k] // sign-in off: start goes home
+    process.env.HARNESS_PUBLIC_URL = 'https://ai.test'
+    assert.equal((await ssoStart(new Request('http://0.0.0.0:8080/api/auth/sso/start'))).headers.get('location'), 'https://ai.test/')
+    // a callback with no flow cookie is refused, and the browser is sent to the public site, not the bind address
+    assert.equal((await ssoCallback(new Request('http://0.0.0.0:8080/api/auth/sso/callback?code=c&state=s'))).headers.get('location'), 'https://ai.test/?signin=error')
+    // without HARNESS_PUBLIC_URL the Host header the browser used is the address (https only behind a trusted proxy)
+    delete process.env.HARNESS_PUBLIC_URL
+    process.env.HARNESS_TRUST_PROXY = '1'
+    const r = await ssoCallback(new Request('http://0.0.0.0:8080/api/auth/sso/callback?code=c&state=s', { headers: { host: 'ai.chocorot.net', 'x-forwarded-proto': 'https' } }))
+    assert.equal(r.headers.get('location'), 'https://ai.chocorot.net/?signin=error')
+  } finally {
+    for (const [k, v] of [['HARNESS_PUBLIC_URL', was.url], ['HARNESS_TRUST_PROXY', was.proxy]] as const) v === undefined ? delete process.env[k] : (process.env[k] = v)
+  }
+})
