@@ -26,6 +26,7 @@ Adding a JS module: add it to `SHELL` in `sw.js` (a test fails otherwise).
 - **Visitor**: one chat kept in `localStorage` (`choco.public.chat.v1`, last 100 messages); Reset is in the Account sheet (two-tap confirm). The page sends its history on every request. A failed attempt leaves a hidden note in that history for the model (see errors.md).
 - **Signed in**: chat list (sidebar from 768 px, Chats sheet on phones), open/delete (two-tap confirm), new chat. Saved chats replay messages, tool calls, results and plans (thinking text is not stored, so reloaded chats show no thinking panel).
 - **Attachments** (signed in, when `/api/me` says so): paperclip, paste, drag and drop; chips with a thumbnail above the composer; the sent message shows the photo and document chips; saved chats load them back from `/api/sessions/<id>/uploads/...` (attachments.md).
+- **Automations** (when `/api/me` says `automations`): a clock button in the sidebar header (desktop) and a row in the Chats sheet (phone) open a sheet with the list (name, schedule, next/last run, on/off switch, Run now, Last result, two-tap Delete) and a form (name, prompt, Repeat or Daily). See automations.md.
 - **Streaming**: events are applied per animation frame; only the last markdown block re-renders, new blocks fade in, a pulsing dot marks the end of the text. "Jump to latest" appears when scrolled up; auto-scroll sticks only while near the bottom.
 - **Thinking panel**: shimmer label with a live timer, open while reasoning streams, collapses to "Thought for Ns" when the answer starts (unless the user opened or closed it). Reasoning written inline as `<think>...</think>` is handled too.
 - **Tool cards**: running / ok / failed with elapsed time; failures open by themselves. Helper output (`sub` events) is nested inside the Helper card. `update_plan` is shown as a live checklist instead of a card.
@@ -64,4 +65,3 @@ Source: its `docs/design-principles.md`, `ui-design-system.md`, `ui-motion.md`, 
 - Thinking text is not stored with saved messages (needs a stored field and stripping it from what is sent to the model).
 - No regenerate for saved chats (the server has no "drop last reply" yet); visitors have it.
 - No tab bar or edge-swipe drawer: the header buttons open sheets instead.
-- Automations are not in the UI yet (phase 6); the Account/Chats sheets are the place for their list.

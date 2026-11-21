@@ -17,6 +17,7 @@ from unittest import mock
 
 import attach
 import auth
+import automations
 import db
 import errors
 import harness
@@ -739,6 +740,7 @@ class ApiBase(SettingsBase):
         threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
         self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
         self.base = f"http://127.0.0.1:{srv.server_address[1]}"
+        self.srv = srv
         self.ws = Path(self.t.name) / "ws"
 
     def http(self, method, path, body=None, cookie=None, headers=None):
@@ -1511,6 +1513,221 @@ class AttachmentApiTests(ApiBase):
     def test_attachment_only_message_gets_a_default_request(self):
         _, evs = self.stream("/api/chat", {"attachments": [att("n.txt", b"data")]}, self.alice)
         self.assertTrue(self.model.calls[0]["messages"][1]["content"].startswith("Please look at the attached file."))
+
+
+def epoch(y, mo, d, h, mi, zone):
+    import datetime
+    import zoneinfo
+    return datetime.datetime(y, mo, d, h, mi, tzinfo=zoneinfo.ZoneInfo(zone)).timestamp()
+
+
+class AutomationUnitTests(SettingsBase):
+    def test_schedule_validation(self):
+        ok = automations.clean_schedule
+        self.assertEqual(ok({"kind": "interval", "every_min": 30, "junk": 1}), {"kind": "interval", "every_min": 30})
+        self.assertEqual(ok({"kind": "daily", "at": "08:30"}), {"kind": "daily", "at": "08:30"})
+        for bad in (None, [], {}, {"kind": "weekly"}, {"kind": "interval"}, {"kind": "interval", "every_min": 14},
+                    {"kind": "interval", "every_min": True}, {"kind": "interval", "every_min": 1.5}, {"kind": "interval", "every_min": 10081},
+                    {"kind": "daily"}, {"kind": "daily", "at": "8:30"}, {"kind": "daily", "at": "24:00"}, {"kind": "daily", "at": "08:60"}, {"kind": "daily", "at": 830}):
+            with self.assertRaises(errors.HarnessError, msg=bad):
+                ok(bad)
+        settings.save({"min_interval_min": 5})  # the floor is a live setting
+        self.assertEqual(ok({"kind": "interval", "every_min": 5})["every_min"], 5)
+
+    def test_next_run_interval_and_daily_in_the_configured_zone(self):
+        self.assertEqual(automations.next_run({"kind": "interval", "every_min": 20}, 1000), 1000 + 1200)
+        sgt = {"kind": "daily", "at": "08:00"}
+        with mock.patch.dict(os.environ, {"HARNESS_TZ": "Asia/Singapore"}):
+            self.assertEqual(automations.next_run(sgt, epoch(2026, 11, 21, 7, 0, "Asia/Singapore")), epoch(2026, 11, 21, 8, 0, "Asia/Singapore"))
+            self.assertEqual(automations.next_run(sgt, epoch(2026, 11, 21, 9, 0, "Asia/Singapore")), epoch(2026, 11, 22, 8, 0, "Asia/Singapore"))
+            self.assertEqual(automations.next_run(sgt, epoch(2026, 11, 21, 8, 0, "Asia/Singapore")), epoch(2026, 11, 22, 8, 0, "Asia/Singapore"))  # strictly after
+        with mock.patch.dict(os.environ, {"HARNESS_TZ": "America/New_York"}):  # clocks go forward on 8 March 2026: 09:00 stays 09:00 local
+            nxt = automations.next_run({"kind": "daily", "at": "09:00"}, epoch(2026, 3, 7, 10, 0, "America/New_York"))
+            self.assertEqual(nxt, epoch(2026, 3, 8, 9, 0, "America/New_York"))
+            self.assertEqual(nxt - epoch(2026, 3, 7, 9, 0, "America/New_York"), 23 * 3600)  # a 23 hour day
+        with mock.patch.dict(os.environ, {"HARNESS_TZ": "Not/AZone"}):  # an unknown zone falls back to UTC instead of crashing
+            self.assertEqual(automations.next_run(sgt, epoch(2026, 11, 21, 7, 0, "UTC")), epoch(2026, 11, 21, 8, 0, "UTC"))
+
+    def test_crud_limits_and_validation(self):
+        conn = db.connect()
+        mk = lambda **kw: automations.create(conn, "a@example.com", {"name": "Morning news", "prompt": "Summarise the news", "schedule": {"kind": "daily", "at": "07:00"}, **kw}, 1000)
+        a = mk()
+        self.assertEqual((a["name"], a["enabled"], a["lastStatus"], a["schedule"]), ("Morning news", True, None, {"kind": "daily", "at": "07:00"}))
+        for bad in ({"name": " "}, {"name": "x" * 61}, {"prompt": ""}, {"prompt": "x" * 2001}, {"schedule": {"kind": "nope"}}):
+            with self.assertRaises(errors.HarnessError):
+                mk(**bad)
+        for _ in range(4):
+            mk()
+        with self.assertRaisesRegex(errors.HarnessError, "at most 5"):
+            mk()
+        settings.save({"max_automations": 6})
+        mk()
+        # update: only a changed schedule or a re-enable recomputes the next run
+        b = automations.update(conn, a["id"], {"name": "Renamed"}, 5000)
+        self.assertEqual((b["name"], b["nextRun"]), ("Renamed", a["nextRun"]))
+        c = automations.update(conn, a["id"], {"schedule": {"kind": "interval", "every_min": 60}}, 5000)
+        self.assertEqual(c["nextRun"], 5000 + 3600)
+        d = automations.update(conn, a["id"], {"enabled": False}, 9000)
+        self.assertEqual((d["enabled"], d["nextRun"]), (False, c["nextRun"]))
+        e = automations.update(conn, a["id"], {"enabled": True}, 9000)
+        self.assertEqual(e["nextRun"], 9000 + 3600)
+        for bad in ({}, {"enabled": "yes"}, {"name": ""}):
+            with self.assertRaises(errors.HarnessError):
+                automations.update(conn, a["id"], bad, 1)
+        automations.delete(conn, a["id"])
+        with self.assertRaises(errors.HarnessError):
+            automations.get(conn, a["id"])
+        with self.assertRaises(errors.HarnessError):
+            automations.delete(conn, 999)
+
+
+class SchedulerTests(SettingsBase):
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        self.sched = automations.Scheduler(self.job)
+        self.mk = lambda owner, name="J", **kw: automations.create(db.connect(auth.db_path(owner)), owner, {"name": name, "prompt": f"do {name}", "schedule": {"kind": "interval", "every_min": 15}, **kw}, 1000)
+
+    def job(self, owner, name, prompt):
+        self.calls.append((owner, name, prompt))
+        return "ok", 7
+
+    def state(self, owner, aid):
+        return automations.get(db.connect(auth.db_path(owner)), aid)
+
+    def test_due_jobs_run_once_and_the_next_run_moves_first(self):
+        a = self.mk("a@example.com")
+        self.assertEqual(self.sched.tick(now=1000 + 899), 0)  # not due yet
+        self.assertEqual(self.sched.tick(now=1000 + 900), 1)
+        s = self.state("a@example.com", a["id"])
+        self.assertEqual((self.calls, s["lastStatus"], s["lastSession"], s["nextRun"]), ([("a@example.com", "J", "do J")], "ok", 7, 1900 + 900))
+        self.assertEqual(self.sched.tick(now=1900), 0)  # same moment again: already moved on
+
+    def test_missed_runs_do_not_pile_up_and_users_stay_separate(self):
+        a, b = self.mk("a@example.com", "A"), self.mk("b@example.com", "B")
+        self.state("a@example.com", a["id"])
+        self.assertEqual(self.sched.tick(now=1000 + 10 * 86400), 2)  # server was off for 10 days: one run each, no backlog
+        self.assertEqual(sorted(c[:2] for c in self.calls), [("a@example.com", "A"), ("b@example.com", "B")])
+        self.assertEqual(self.state("a@example.com", a["id"])["nextRun"], 1000 + 10 * 86400 + 900)
+
+    def test_disabled_jobs_and_failures(self):
+        a, b, c = self.mk("a@example.com", "off"), self.mk("a@example.com", "boom"), self.mk("a@example.com", "bug")
+        automations.update(db.connect(auth.db_path("a@example.com")), a["id"], {"enabled": False}, 1000)
+
+        def job(owner, name, prompt):
+            if name == "boom":
+                raise errors.HarnessError("upstream_down")
+            if name == "bug":
+                raise KeyError("x")
+            return "ok", 1
+        self.sched.run_job = job
+        self.assertEqual(self.sched.tick(now=5000), 2)  # the failure of one doesn't stop the other
+        self.assertIsNone(self.state("a@example.com", a["id"])["lastStatus"])
+        self.assertTrue(self.state("a@example.com", b["id"])["lastStatus"].startswith("upstream_down: The AI model server can't be reached"))
+        self.assertEqual(self.state("a@example.com", c["id"])["lastStatus"], "internal: KeyError")
+
+    def test_a_job_that_is_still_running_is_not_started_twice(self):
+        a = self.mk("a@example.com")
+        self.sched.running.add((auth.db_path("a@example.com"), a["id"]))
+        self.assertEqual(self.sched.tick(now=5000), 0)
+        self.assertEqual(self.calls, [])
+
+    def test_run_now_keeps_the_schedule_and_refuses_a_second_start(self):
+        a = self.mk("a@example.com")
+        gate, started = threading.Event(), threading.Event()
+
+        def slow(owner, name, prompt):
+            started.set()
+            gate.wait(5)
+            return "ok", 3
+        self.sched.run_job = slow
+        self.assertTrue(self.sched.run_now("a@example.com", a["id"]))
+        self.assertTrue(started.wait(2))
+        self.assertFalse(self.sched.run_now("a@example.com", a["id"]))  # already running
+        gate.set()
+        for _ in range(100):
+            if self.state("a@example.com", a["id"])["lastStatus"]:
+                break
+            time.sleep(0.02)
+        s = self.state("a@example.com", a["id"])
+        self.assertEqual((s["lastStatus"], s["nextRun"]), ("ok", a["nextRun"]))
+        with self.assertRaises(errors.HarnessError):
+            self.sched.run_now("a@example.com", 999)
+
+
+class AutomationApiTests(ApiBase):
+    def setUp(self):
+        super().setUp()
+        self.alice = self.login("alice@example.com")
+        self.new = lambda **kw: self.api("POST", "/api/automations", {"name": "News", "prompt": "Find three tech headlines", "schedule": {"kind": "interval", "every_min": 30}, **kw}, self.alice)
+
+    def test_capability_follows_mode_and_the_limit_setting(self):
+        caps = lambda cookie=None: self.api("GET", "/api/me", cookie=cookie)[1]["capabilities"]["automations"]
+        self.assertEqual((caps(), caps(self.alice)), (False, True))
+        settings.save({"max_automations": 0})
+        self.assertFalse(caps(self.alice))
+        status, body, _ = self.new()
+        self.assertEqual((status, body["kind"]), (400, "bad_request"))
+
+    def test_create_list_edit_delete(self):
+        status, a, _ = self.new()
+        self.assertEqual((status, a["name"], a["enabled"], a["lastRun"]), (200, "News", True, None))
+        self.assertGreater(a["nextRun"], time.time() + 29 * 60)
+        self.assertEqual([x["id"] for x in self.api("GET", "/api/automations", cookie=self.alice)[1]["automations"]], [a["id"]])
+        status, b, _ = self.api("PATCH", f"/api/automations/{a['id']}", {"enabled": False, "name": "Paused"}, self.alice)
+        self.assertEqual((status, b["enabled"], b["name"]), (200, False, "Paused"))
+        self.assertEqual(self.api("PATCH", f"/api/automations/{a['id']}", {"enabled": "no"}, self.alice)[0], 400)
+        self.assertEqual(self.new(schedule={"kind": "interval", "every_min": 1})[0], 400)
+        self.assertEqual(self.api("DELETE", f"/api/automations/{a['id']}", cookie=self.alice)[0], 200)
+        self.assertEqual(self.api("GET", "/api/automations", cookie=self.alice)[1]["automations"], [])
+        self.assertEqual(self.api("DELETE", f"/api/automations/{a['id']}", cookie=self.alice)[0], 404)
+        self.assertEqual(self.api("PUT", "/api/automations", {}, self.alice)[0], 404)
+
+    def test_nobody_else_can_see_or_touch_them_and_visitors_have_none(self):
+        a = self.new()[1]
+        bob = self.login("bob@example.com")
+        self.assertEqual(self.api("GET", "/api/automations", cookie=bob)[1]["automations"], [])
+        for method, path, body in (("PATCH", f"/api/automations/{a['id']}", {"enabled": False}), ("DELETE", f"/api/automations/{a['id']}", None), ("POST", f"/api/automations/{a['id']}/run", {})):
+            self.assertEqual(self.api(method, path, body, bob)[0], 404, method)
+        for method, path, body in (("GET", "/api/automations", None), ("POST", "/api/automations", {"name": "x"}), ("DELETE", "/api/automations/1", None), ("POST", "/api/automations/1/run", {})):
+            self.assertEqual(self.api(method, path, body)[0], 401, method)
+        status, body, _ = self.api("POST", "/api/automations", {"name": "x", "prompt": "y", "schedule": {"kind": "interval", "every_min": 30}}, self.alice, headers={"Origin": "https://evil.example"})
+        self.assertEqual(status, 403)
+
+    def test_a_due_job_becomes_a_saved_chat_without_the_shell(self):
+        root = self.login("root@example.com")  # allowlisted for the shell in chats
+        a = self.api("POST", "/api/automations", {"name": "Daily digest", "prompt": "Make the digest", "schedule": {"kind": "daily", "at": "07:00"}}, root)[1]
+        self.assertEqual(self.srv.scheduler.tick(now=time.time() + 2 * 86400), 1)
+        names = [t["function"]["name"] for t in self.model.calls[0]["schemas"]]
+        self.assertTrue({"web_fetch", "web_search", "update_plan"} <= set(names))
+        self.assertNotIn("run_bash", names)  # unattended jobs never get the shell
+        sessions = self.api("GET", "/api/sessions", cookie=root)[1]["sessions"]
+        self.assertEqual([s["goal"] for s in sessions], ["\u23f0 Daily digest"])
+        msgs = self.api("GET", f"/api/sessions/{sessions[0]['id']}", cookie=root)[1]["messages"]
+        self.assertEqual([(m["role"], m["content"]) for m in msgs], [("user", "Make the digest"), ("assistant", "ok")])
+        s = self.api("GET", "/api/automations", cookie=root)[1]["automations"][0]
+        self.assertEqual((s["lastStatus"], s["lastSession"], s["id"]), ("ok", sessions[0]["id"], a["id"]))
+        self.assertTrue((self.ws / "users" / auth.uid("root@example.com") / str(sessions[0]["id"])).is_dir())
+
+    def test_failed_run_is_recorded_for_the_user(self):
+        settings.save({"retries": 0})
+        harness.chat = boom("upstream_down")
+        self.new()
+        self.srv.scheduler.tick(now=time.time() + 3600)
+        s = self.api("GET", "/api/automations", cookie=self.alice)[1]["automations"][0]
+        self.assertTrue(s["lastStatus"].startswith("upstream_down:"), s["lastStatus"])
+        self.assertIsNotNone(s["lastSession"])  # the chat exists, with the failure note inside
+
+    def test_run_now_endpoint(self):
+        a = self.new()[1]
+        self.assertEqual(self.api("POST", f"/api/automations/{a['id']}/run", {}, self.alice)[0], 200)
+        for _ in range(100):
+            s = self.api("GET", "/api/automations", cookie=self.alice)[1]["automations"][0]
+            if s["lastStatus"]:
+                break
+            time.sleep(0.05)
+        self.assertEqual((s["lastStatus"], s["nextRun"]), ("ok", a["nextRun"]))
+        self.assertEqual(len(self.api("GET", "/api/sessions", cookie=self.alice)[1]["sessions"]), 1)
 
 
 if __name__ == "__main__":

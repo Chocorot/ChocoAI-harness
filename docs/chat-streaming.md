@@ -30,7 +30,7 @@ Events from a delegated helper carry an extra `"sub": <call id>` (`status`, `thi
 A comment line `: ka` is sent every 10 s (`harness.KEEPALIVE`). The app ignores it (see `sse.js`). It stops Cloudflare and other proxies from cutting a stream that is silent during a long prefill or a model load (about 22 s to the first token on lyna).
 
 ## Run queue (`runq.RunQueue`)
-- One run at a time (the local model serves one stream). Others wait in line, ordered by priority then arrival (`prio` comes from `auth.MODES`: admin 0, users 1, visitors 2; automations will sit between users and visitors).
+- One run at a time (the local model serves one stream). Others wait in line, ordered by priority then arrival (`prio` comes from `auth.MODES`: admin 0, users 1, visitors 2; automations run at users + 0.5, between users and visitors).
 - Line length is limited by the `max_queue` setting (default 8); visitors get the shorter `max_queue_public` (default 2). A full line answers `busy` (HTTP 503, or an `error` event). An idle queue never refuses.
 - A client that disconnects while waiting leaves the line. Once a run has started it always finishes, so history stays consistent.
 - `/health`, `/` and `/manage/*` never wait.

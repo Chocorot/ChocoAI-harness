@@ -19,16 +19,18 @@ from pathlib import Path
 
 import attach
 import auth
+import automations
 import db
 import errors
 import runq
 import settings
 import tools
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
 MAX_BODY = 1_000_000  # bytes accepted on a request
 DRAIN = 20_000_000  # most of a refused body we read before answering
+AUTO_PATH = r"/api/automations(?:/(\d+)(/run)?)?"
 ATTACH_BODY = 9_000_000  # signed-in chat requests may carry attachments (base64: up to ~6 MB of files)
 BULKY = {"read_file", "web_fetch", "web_search"}  # results old enough to be re-fetched are replaced by a stub when compacting
 HELPER_PROMPT = (" You are a helper working on one subtask for another agent. Do only that task, then finish with a short "
@@ -379,7 +381,7 @@ def system_text(allow=None):
     return " ".join(x for x in (settings.get("system_prompt"), tools.prompts_for(allow) if allow is not None else "") if x)
 
 
-def start(conn, goal, session, retry=False, allow=None, content=None):
+def start(conn, goal, session, retry=False, allow=None, content=None, title=None):
     """Create or resume a session, add the goal as a user message. Returns (sid, messages).
     `retry` removes the failure note of the last run so the model simply continues where it stopped."""
     if session:
@@ -394,7 +396,7 @@ def start(conn, goal, session, retry=False, allow=None, content=None):
         if messages and messages[0]["role"] == "system":  # a saved prompt edit applies to resumed sessions too
             messages[0] = {"role": "system", "content": system_text(allow)}
     else:
-        sid = db.new_session(conn, goal)
+        sid = db.new_session(conn, title or goal)
         messages = [{"role": "system", "content": system_text(allow)}]
         db.save_msg(conn, sid, messages[0])
     if goal:
@@ -465,10 +467,32 @@ def keepalive(sse, stop):
         sse.ping()
 
 
-def make_server(host, port, ws, max_turns):
+def make_server(host, port, ws, max_turns, scheduler=False):
     queue = runq.RunQueue(lambda: settings.get("max_queue"))  # one agent run at a time: the local model serves one stream
     public_hits, login_fails = auth.Throttle(), auth.Throttle()  # per server, so tests stay isolated
     active = set()  # (address, session id) of runs that are executing now, so a page that came back can tell
+
+    def run_automation(owner, name, prompt):
+        """One scheduled run as `owner`: a new saved chat titled with the job's name. Unattended jobs read web pages, so they
+        never get the shell, even when the owner has it. Returns (status text, session id)."""
+        mode = auth.mode_for(owner)
+        allow = [t for t in auth.MODES[mode]["tools"] if t != "run_bash"]
+        conn, sid = db.connect(auth.db_path(owner)), None
+        try:
+            with queue.slot(prio=auth.MODES[mode]["prio"] + 0.5):  # after live chats, before visitors
+                sid, messages = start(conn, prompt, None, False, allow, title="\u23f0 " + name)
+                active.add((owner, sid))
+                try:
+                    run_agent(conn, sid, messages, auth.session_ws(ws, owner, sid), True, max_turns, emit=lambda ev: None, allow=allow)
+                finally:
+                    active.discard((owner, sid))
+            return "ok", sid
+        except errors.HarnessError as e:
+            return f"{e.kind}: {e.message}", sid
+        finally:
+            conn.close()
+
+    sched = automations.Scheduler(run_automation)
 
     class H(BaseHTTPRequestHandler):
         sse = None  # set once this request turned into an event stream
@@ -628,6 +652,8 @@ def make_server(host, port, ws, max_turns):
             m = re.fullmatch(r"/api/sessions/(\d+)/uploads/(\w[\w.\-]{0,99})", path)
             if m:
                 return self._upload_get(int(m.group(1)), m.group(2))
+            if path == "/api/automations":
+                return self._automations("GET", path)
             raise errors.HarnessError("not_found")
 
         def _post(self, rid):
@@ -637,11 +663,19 @@ def make_server(host, port, ws, max_turns):
             if path in ("/api/login", "/api/logout", "/api/chat"):
                 self._same_origin()
                 return {"/api/login": self._login, "/api/logout": self._logout, "/api/chat": self._chat}[path]()
+            if re.fullmatch(AUTO_PATH, path):
+                return self._automations("POST", path)
             raise errors.HarnessError("not_found")
 
+        def do_PATCH(self):
+            self._guard(lambda rid: self._automations("PATCH", urllib.parse.urlparse(self.path).path))
+
         def _delete(self, rid):
+            path = urllib.parse.urlparse(self.path).path
+            if re.fullmatch(AUTO_PATH, path):
+                return self._automations("DELETE", path)
             self._same_origin()
-            m = re.fullmatch(r"/api/sessions/(\d+)", urllib.parse.urlparse(self.path).path)
+            m = re.fullmatch(r"/api/sessions/(\d+)", path)
             if not m:
                 raise errors.HarnessError("not_found")
             addr, sid = self._need_user(), int(m.group(1))
@@ -655,13 +689,45 @@ def make_server(host, port, ws, max_turns):
             shutil.rmtree(auth.session_ws(ws, addr, sid, create=False), ignore_errors=True)
             self._send(200, {"ok": True})
 
+        def _automations(self, method, path):
+            """Scheduled prompts of the signed-in caller (their own DB only)."""
+            if method != "GET":
+                self._same_origin()
+            addr = self._need_user()
+            m = re.fullmatch(AUTO_PATH, path)
+            if not m:
+                raise errors.HarnessError("not_found")
+            aid, run = (int(m.group(1)) if m.group(1) else None), bool(m.group(2))
+
+            def work(conn):
+                if aid is None:
+                    if method == "GET":
+                        return {"automations": automations.listing(conn)}
+                    if method == "POST":
+                        return automations.create(conn, addr, self._json_body(), time.time())
+                    raise errors.HarnessError("not_found")
+                if method == "PATCH" and not run:
+                    return automations.update(conn, aid, self._json_body(), time.time())
+                if method == "DELETE" and not run:
+                    automations.delete(conn, aid)
+                    return {"ok": True}
+                if method == "POST" and run:
+                    automations.get(conn, aid)
+                    if not sched.run_now(addr, aid):
+                        raise errors.HarnessError("bad_request", "That automation is already running.")
+                    return {"ok": True}
+                raise errors.HarnessError("not_found")
+
+            self._send(200, self._with_user_db(work))
+
         # ---- identity endpoints ---------------------------------------------------------------------------------
         def _me(self):
             mode, addr = self._who()
             rule = auth.MODES[mode]
             self._send(200, {"mode": mode, "address": addr, "capabilities": {
                 "login": auth.enabled(), "tools": rule["tools"], "shell": "run_bash" in rule["tools"],
-                "history": rule["store"],
+                "history": rule["store"], "automations": rule["store"] == "user" and settings.get("max_automations") > 0,
+                "timezone": os.environ.get("HARNESS_TZ") or "UTC",
                 "attachments": {"image": rule["store"] == "user" and settings.get("vision"),
                                 "documents": sorted(attach.READERS) if rule["store"] == "user" else []}}})
 
@@ -834,7 +900,11 @@ def make_server(host, port, ws, max_turns):
             finally:
                 stop.set()
 
-    return ThreadingHTTPServer((host, port), H)
+    srv = ThreadingHTTPServer((host, port), H)
+    srv.scheduler = sched  # tests drive it with sched.tick(now); main() starts its thread
+    if scheduler:
+        sched.start()
+    return srv
 
 
 def main():
@@ -858,7 +928,7 @@ def main():
         if not os.environ.get("HARNESS_TOKEN"):
             print("/task is OFF (set HARNESS_TOKEN to enable it)", file=sys.stderr)
         print(f"serving on {a.host}:{a.serve}", file=sys.stderr)
-        return make_server(a.host, a.serve, ws, a.max_turns).serve_forever()
+        return make_server(a.host, a.serve, ws, a.max_turns, scheduler=True).serve_forever()
     conn = db.connect()
     if not a.goal and not a.session:
         ap.error("give a goal or --session")

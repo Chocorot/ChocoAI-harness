@@ -10,10 +10,11 @@ Read the doc for the area you are about to change. Update it in the same change.
 | [agent-mode.md](agent-mode.md) | Plan + delegate tools, budgets, coming back after a dropped connection |
 | [pwa-and-ui-design.md](pwa-and-ui-design.md) | The app UI: files, what it does, app-feel and design rules, what is verified |
 | [attachments.md](attachments.md) | Photos (vision) and documents (txt, docx, pdf): limits, what the model gets, serving, setting |
+| [automations.md](automations.md) | Scheduled prompts: schedule data, scheduler, permissions, API |
 | [errors.md](errors.md) | Typed errors, what the user sees, what the model sees, retries, failure log |
 | [chat-streaming.md](chat-streaming.md) | `/task` request and SSE events, run queue, keepalive, status events |
 
-Planned (written when the feature lands): automations, deploy. The rework plan is in Sir's Claude plan file for 2026-11-21: public chat-only tier, DMS-mail login, per-user storage, vision and documents, scheduled prompts, app-like UI.
+Not written yet: a deploy doc (deploy steps are in the README and in internet.md / attachments.md for their parts). The rework plan is in Sir's Claude plan file for 2026-11-21: public chat-only tier, DMS-mail login, per-user storage, vision and documents, scheduled prompts, app-like UI.
 
 Rework progress:
 - [x] Phase 1: errors, queue, keepalive, catch-all (v0.3.0)
@@ -21,4 +22,4 @@ Rework progress:
 - [x] Phase 3: internet tools, agent mode (v0.5.0)
 - [x] Phase 4: frontend rewrite (PWA, motion) (v0.6.0)
 - [x] Phase 5: vision and documents (v0.7.0; vision stays off until the model is confirmed to see images)
-- [ ] Phase 6: automations
+- [x] Phase 6: automations (v0.8.0)

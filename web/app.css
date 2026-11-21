@@ -272,3 +272,18 @@ input, textarea { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---- automations ---- */
+.auto { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; gap: 6px; background: var(--card); }
+.auto-h { display: flex; align-items: center; gap: 8px; } .auto-h .t { flex: 1; min-width: 0; min-height: 44px; text-align: left; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auto-m, .auto-s { font-size: 0.85rem; color: var(--muted-fg); } .auto-s.warn { color: var(--degraded); } .auto-s.ok { color: var(--up); }
+.auto-a { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; } .auto-a .btn { min-height: 40px; padding: 0 12px; font-size: 0.88rem; }
+.switch { flex: none; width: 52px; height: 44px; display: grid; place-items: center; }
+.switch::before { content: ""; width: 42px; height: 24px; border-radius: 12px; background: var(--border); transition: background var(--dur-base); grid-area: 1 / 1; }
+.switch::after { content: ""; width: 18px; height: 18px; border-radius: 50%; background: var(--card); grid-area: 1 / 1; justify-self: start; margin-left: 7px; box-shadow: 0 1px 3px oklch(0 0 0 / 30%); transition: transform var(--dur-base) var(--ease); }
+.switch[aria-checked="true"]::before { background: var(--primary); } .switch[aria-checked="true"]::after { transform: translateX(18px); }
+.seg.two { grid-template-columns: 1fr 1fr; }
+.field textarea, .field select { min-height: 46px; padding: 10px 14px; border: 1px solid var(--input); border-radius: 12px; background: var(--card); font-size: 16px; font-weight: 400; outline: 0; resize: vertical; }
+.field select { padding: 0 14px; } .field input[type="time"] { min-width: 0; }
+.field textarea:focus, .field select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 25%, transparent); }
+.side-h .iconbtn + .iconbtn { margin-left: -4px; }

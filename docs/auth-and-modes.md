@@ -32,10 +32,11 @@ A new tier = a new row. Tools are limited twice: the schemas sent to the model, 
 ## Endpoints
 | | |
 |---|---|
-| `GET /api/me` | `{mode, address, capabilities:{login, tools[], shell, history, attachments:{image, documents[]}}}`: the page builds itself from this |
+| `GET /api/me` | `{mode, address, capabilities:{login, tools[], shell, history, automations, timezone, attachments:{image, documents[]}}}`: the page builds itself from this |
 | `POST /api/login`, `POST /api/logout` | see above |
 | `POST /api/chat` | public: `{"messages":[{role,content}...]}`; signed in: `{"goal","session","retry","attachments"}` (attachments.md). Streams by default |
 | `GET /api/sessions`, `GET /api/sessions/<id>`, `GET /api/sessions/<id>/uploads/<name>`, `DELETE /api/sessions/<id>` | the caller's own chats (401 for visitors) |
+| `GET/POST/PATCH/DELETE /api/automations[/<id>[/run]]` | the caller's scheduled prompts (automations.md) |
 | `POST /task` | admin only, needs `HARNESS_TOKEN`; **no token set = the endpoint does not exist (404)** |
 
 ## Public chat
@@ -52,6 +53,7 @@ A new tier = a new row. Tools are limited twice: the schemas sent to the model, 
 | `MAIL_HOST`, `MAIL_PORT` | IMAP server for sign-in |
 | `HARNESS_TOKEN` | enables `/task` and the admin mode |
 | `HARNESS_TRUST_PROXY`, `HARNESS_INSECURE_COOKIES` | see above |
+| `HARNESS_TZ` | time zone name for daily automations (default UTC) |
 | `HARNESS_OPEN` | **removed**: the host/token start-up guard is gone because `/task` now refuses to exist without a token |
 
 ## Not checked yet

@@ -7,6 +7,7 @@ services:
     env_file: .env
     environment:
       SEARCH_URL: http://searxng:8080/search   # web_search tool (docs/internet.md)
+      # HARNESS_TZ: Region/City   # time zone for daily automations (default UTC), e.g. Asia/Kuala_Lumpur
       HARNESS_TRUST_PROXY: "1"                 # port is published on 127.0.0.1 only; every request comes through our tunnel
     depends_on: [searxng]
     ports: ["127.0.0.1:8421:8080"]  # cloudflared tunnel -> http://localhost:8421

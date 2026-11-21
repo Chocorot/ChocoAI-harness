@@ -1,6 +1,6 @@
 FROM python:3.12-slim
-# poppler-utils: pdftotext, so users can attach PDFs (docs/attachments.md)
-RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/* \
+# poppler-utils: pdftotext, so users can attach PDFs (docs/attachments.md); tzdata: HARNESS_TZ for automations (docs/automations.md)
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tzdata && rm -rf /var/lib/apt/lists/* \
  && useradd -m app && mkdir /data /workspace && chown app /data /workspace
 WORKDIR /app
 COPY *.py ./

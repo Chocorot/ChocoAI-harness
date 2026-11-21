@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, ts REAL, session INTEGE
   tool TEXT, args TEXT, result TEXT);
 CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY, ts REAL, rid TEXT, session INTEGER,
   kind TEXT, code TEXT, message TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS automations(id INTEGER PRIMARY KEY, owner TEXT, name TEXT, prompt TEXT, schedule TEXT,
+  enabled INTEGER DEFAULT 1, next_run REAL, last_run REAL, last_status TEXT, last_session INTEGER, created REAL);
 CREATE INDEX IF NOT EXISTS msg_session ON messages(session);
 """
 ERROR_KEEP = 200  # the errors table is a ring: only the newest rows are kept

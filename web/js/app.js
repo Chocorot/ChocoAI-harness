@@ -368,8 +368,74 @@ function chatsSheet() {
   openSheet("Chats", (b) => {
     const nb = el("button", "btn primary wide", `${icon("plus", 18)} New chat`); nb.type = "button"; nb.addEventListener("click", () => { closeSheet(); goNew(); });
     const list = el("div", "list"); list.dataset.chatlist = "";
-    b.append(nb, list); fillList(list);
+    b.append(nb);
+    if (S.me.capabilities.automations) { const ab = el("button", "btn wide", `${icon("clock", 18)} Automations`); ab.type = "button"; ab.addEventListener("click", () => { closeSheet(true); automationsSheet(); }); b.append(ab); }
+    b.append(list); fillList(list);
   });
+}
+
+// ---- automations (scheduled prompts) -----------------------------------------------------------------------------------
+const INTERVALS = [[15, "15 minutes"], [30, "30 minutes"], [60, "hour"], [120, "2 hours"], [360, "6 hours"], [720, "12 hours"], [1440, "day"]]; // values are minutes
+const describe = (s) => (s.kind === "daily" ? `Every day at ${s.at}` : `Every ${(INTERVALS.find(([n]) => n === s.every_min) || [0, `${s.every_min} minutes`])[1]}`);
+const stamp = (t) => new Date(t * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+function automationsSheet() {
+  openSheet("Automations", (b) => autoList(b));
+}
+async function autoList(b) {
+  b.innerHTML = "";
+  const add = el("button", "btn primary wide", `${icon("plus", 18)} New automation`); add.type = "button";
+  b.append(add, el("p", "note", "A saved prompt that runs by itself on a schedule. It can search the web and read pages, but never uses the shell. Each run appears as a chat."));
+  let items = [];
+  try { items = (await api("GET", "/api/automations")).automations; } catch (e) { return b.append(el("p", "note", e.message)); }
+  add.addEventListener("click", () => autoForm(b));
+  if (!items.length) b.append(el("div", "list-empty", "No automations yet."));
+  for (const a of items) {
+    const c = el("div", "auto", `<div class="auto-h"><button class="t" type="button"></button><button class="switch" type="button" role="switch" aria-label="Enabled"></button></div><div class="auto-m"></div><div class="auto-s"></div><div class="auto-a"></div>`);
+    $(".t", c).textContent = a.name;
+    const sw = $(".switch", c); sw.setAttribute("aria-checked", String(a.enabled));
+    $(".auto-m", c).textContent = `${describe(a.schedule)}${a.enabled && a.nextRun ? ` · next ${stamp(a.nextRun)} (your time)` : " · paused"}`;
+    const st = $(".auto-s", c);
+    st.textContent = a.lastRun ? `Last run ${stamp(a.lastRun)}: ${a.lastStatus}` : "Not run yet";
+    st.className = "auto-s " + (a.lastRun ? (a.lastStatus === "ok" ? "ok" : "warn") : "");
+    const acts = $(".auto-a", c);
+    const run = el("button", "btn", `${icon("refresh", 16)} Run now`); run.type = "button";
+    run.addEventListener("click", async () => { try { await api("POST", `/api/automations/${a.id}/run`, {}); toast("Started. The result shows up in your chats."); setTimeout(() => sheet && autoList(b), 4000); } catch (e) { toast(e.message); } });
+    acts.append(run);
+    if (a.lastSession) { const o = el("button", "btn", `${icon("chat", 16)} Last result`); o.type = "button"; o.addEventListener("click", () => { closeSheet(); location.hash = `#/c/${a.lastSession}`; }); acts.append(o); }
+    const del = el("button", "btn danger", `${icon("trash", 16)} Delete`); del.type = "button";
+    twoStep(del, "Tap again to delete", async () => { try { await api("DELETE", `/api/automations/${a.id}`); autoList(b); } catch (e) { toast(e.message); } });
+    acts.append(del);
+    sw.addEventListener("click", async () => { try { await api("PATCH", `/api/automations/${a.id}`, { enabled: !a.enabled }); autoList(b); } catch (e) { toast(e.message); } });
+    $(".t", c).addEventListener("click", () => autoForm(b, a));
+    b.append(c);
+  }
+  stagger([...b.querySelectorAll(".auto")], { y: 6 });
+}
+function autoForm(b, a) {
+  const s = a?.schedule || { kind: "interval", every_min: 60 };
+  b.innerHTML = `<form class="form"><label class="field">Name<input name="name" maxlength="60" required autocomplete="off"></label>
+    <label class="field">What should the assistant do?<textarea name="prompt" rows="4" maxlength="2000" required></textarea></label>
+    <div class="seg two" role="group" aria-label="Schedule"><button type="button" data-k="interval">${icon("refresh", 16)} Repeat</button><button type="button" data-k="daily">${icon("clock", 16)} Daily</button></div>
+    <label class="field" data-f="interval">Repeat every<select name="every">${INTERVALS.map(([n, l]) => `<option value="${n}">${l}</option>`).join("")}</select></label>
+    <label class="field" data-f="daily">Time<input type="time" name="at" value="08:00"></label>
+    <p class="note">Times use the server's time zone (${esc(S.me.capabilities.timezone || "UTC")}). Runs after live chats when the assistant is busy.</p>
+    <div class="card err" role="alert" hidden>${icon("alert", 18)}<div class="body"></div></div>
+    <button class="btn primary wide" type="submit">Save</button><button class="btn wide" type="button" data-cancel>Cancel</button></form>`;
+  const f = $("form", b);
+  f.name.value = a?.name || ""; f.prompt.value = a?.prompt || "";
+  if (s.kind === "interval") f.every.value = INTERVALS.some(([n]) => n === s.every_min) ? s.every_min : 60; else f.at.value = s.at;
+  let kind = s.kind;
+  const show = () => { f.querySelectorAll("[data-k]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.k === kind))); f.querySelectorAll("[data-f]").forEach((x) => { x.hidden = x.dataset.f !== kind; }); };
+  f.querySelectorAll(".seg [data-k]").forEach((x) => x.addEventListener("click", () => { kind = x.dataset.k; show(); }));
+  show();
+  $("[data-cancel]", f).addEventListener("click", () => autoList(b));
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { name: f.name.value, prompt: f.prompt.value, schedule: kind === "daily" ? { kind, at: f.at.value } : { kind, every_min: Number(f.every.value) } };
+    try { await (a ? api("PATCH", `/api/automations/${a.id}`, body) : api("POST", "/api/automations", body)); autoList(b); }
+    catch (x) { const box = $(".card.err", f); $(".body", box).textContent = x.message; box.hidden = false; shake(box); }
+  });
+  f.name.focus({ preventScroll: true });
 }
 function accountSheet() {
   openSheet("Account", (b) => {
@@ -447,8 +513,8 @@ function applyMode() {
   $("#btn-account").innerHTML = S.me.address ? `<span class="avatar" style="width:30px;height:30px;font-size:.85rem">${esc(S.me.address[0])}</span>` : icon("user", 22);
   $("#fine").textContent = u ? "Saved to your account. The assistant can make mistakes." : "Your chat stays on this device. The assistant can make mistakes.";
   const side = $("#side");
-  side.innerHTML = u ? `<div class="side-h"><div class="brand"><div class="logo">${icon("sparkle", 16)}</div>ChocoAI</div><button class="iconbtn" id="side-new" type="button" aria-label="New chat">${icon("plus", 20)}</button></div><div class="list" data-chatlist></div><div class="side-f"><button class="me" id="side-me" type="button"><span class="avatar">${esc(S.me.address?.[0] || "?")}</span><span>${esc(S.me.address || "")}</span></button></div>` : "";
-  if (u) { $("#side-new").addEventListener("click", goNew); $("#side-me").addEventListener("click", accountSheet); fillList($("[data-chatlist]", side)); }
+  side.innerHTML = u ? `<div class="side-h"><div class="brand"><div class="logo">${icon("sparkle", 16)}</div>ChocoAI</div>${S.me.capabilities.automations ? `<button class="iconbtn" id="side-auto" type="button" aria-label="Automations">${icon("clock", 20)}</button>` : ""}<button class="iconbtn" id="side-new" type="button" aria-label="New chat">${icon("plus", 20)}</button></div><div class="list" data-chatlist></div><div class="side-f"><button class="me" id="side-me" type="button"><span class="avatar">${esc(S.me.address?.[0] || "?")}</span><span>${esc(S.me.address || "")}</span></button></div>` : "";
+  if (u) { $("#side-auto")?.addEventListener("click", automationsSheet); $("#side-new").addEventListener("click", goNew); $("#side-me").addEventListener("click", accountSheet); fillList($("[data-chatlist]", side)); }
 }
 function goNew() { if (location.hash === "#/" || location.hash === "") newChat(); else location.hash = "#/"; input.focus(); }
 function route(first) {
