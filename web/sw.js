@@ -1,6 +1,6 @@
 // Service worker: lets the app install and open offline (the shell only; chats always need the network).
 // Network first for our own static files, so a deploy shows up on the next open; the cache is only the fallback.
-const CACHE = "choco-harness-shell-v1";
+const CACHE = "choco-harness-shell-v2";
 const SHELL = ["/", "/tokens.css", "/app.css", "/js/app.js", "/js/md.js", "/js/sse.js", "/js/icons.js", "/js/turn.js", "/js/anim.js", "/js/theme.js", "/js/attach.js",
   "/vendor/motion.js", "/manifest.webmanifest", "/icons/icon.svg", "/icons/mark.svg", "/icons/icon-192.png"];
 

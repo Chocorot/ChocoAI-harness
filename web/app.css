@@ -42,8 +42,8 @@ input, textarea { font: inherit; color: inherit; }
 .top h1 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100vw - 220px); /* the two side groups are equal columns, so the title is truly centred; this keeps a long title from squeezing them */ }
 .top .l, .top .r { display: flex; align-items: center; gap: 4px; min-width: 0; } .top .r { justify-content: flex-end; }
 .brand { display: flex; align-items: center; gap: 8px; }
-.logo { width: 28px; height: 28px; border-radius: 8px; flex: none; /* the brand tile: icons/mark.svg on the accent, same shape as the other Choco apps */
-  background: url("/icons/mark.svg?v=3") center / 78% no-repeat, var(--primary); }
+.logo { width: 28px; height: 28px; border-radius: 8px; flex: none; position: relative; background: var(--primary); /* the brand tile: accent square + the icons/mark.svg glyph in the foreground colour, same as the other Choco apps */ }
+.logo::after { content: ""; position: absolute; inset: 0; background: var(--primary-foreground); -webkit-mask: url("/icons/mark.svg?v=4") center / 58% no-repeat; mask: url("/icons/mark.svg?v=4") center / 58% no-repeat; }
 .iconbtn { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--foreground); transition: background var(--dur-fast), transform var(--dur-fast); }
 /* hover and press: the same translucent overlay on every control, whatever its own background */
 .iconbtn:active, .chip:active, .btn:not(.primary):active, .row:not([data-on="true"]):active, .menu-i:active, .me:active, .att:active, .copy:active, .seg button:active, .auto-h .t:active { background-image: linear-gradient(var(--press), var(--press)); }

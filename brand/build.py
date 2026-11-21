@@ -3,7 +3,8 @@
 store images. Nothing here is AI-generated art: the SVGs are drawn from numbers below, and the PNGs are photographs
 (screenshots) of real pages rendered by Firefox from the scenes in brand/scenes/.
 Dev tool, macOS: needs Firefox (headless screenshots) and `sips` (resizing). Not run by CI or Docker.
-Usage: python3 brand/build.py [svg|icons|scenes|all]   (default all). Output goes to web/ (see docs/branding-and-seo.md)."""
+Usage: python3 brand/build.py [stamp|scenes|all]   (default all). Output goes to web/ (see docs/branding-and-seo.md).
+SINCE 2026-11-21 the icons (SVG, PNG, ICO) are NOT built here: they come from the shared ChocoHost-Design repo (`node brand/install.mjs ai <this repo>`), so all Choco apps look the same. This script only stamps ?v=N into the icon URLs and builds the preview/store images (scenes)."""
 import functools
 import http.server
 import re
@@ -20,7 +21,7 @@ WEB, SCENES = ROOT / "web", ROOT / "brand" / "scenes"
 FIREFOX = "/Applications/Firefox.app/Contents/MacOS/firefox"
 
 # ---- the mark: a speech bubble with a centred tail (mirror symmetric) holding an AI spark (64 x 64 grid) ------------------
-VERSION = 3  # bump when the look changes: it is written into the icon URLs (?v=N), so browsers and apps refetch instead of showing a cached icon
+VERSION = 4  # bump when the look changes: it is written into the icon URLs (?v=N), so browsers and apps refetch instead of showing a cached icon
 BG_TOP, BG_BOT = "#35b4bc", "#16727a"  # brand teal, light to deep
 DEEP, WHITE = "#0f5a61", "#ffffff"
 BUBBLE = "M20 12h24a9 9 0 0 1 9 9v16a9 9 0 0 1-9 9H37.5L32 52l-5.5-6H20a9 9 0 0 1-9-9V21a9 9 0 0 1 9-9z"
@@ -155,9 +156,10 @@ def write_scenes():
 
 if __name__ == "__main__":
     what = sys.argv[1] if len(sys.argv) > 1 else "all"
-    if what in ("svg", "all"):
-        write_svgs()
-    if what in ("icons", "all"):
-        write_icons()
+    if what in ("svg", "icons"):
+        sys.exit("icons moved: run `node brand/install.mjs ai <path to this repo>` in ChocoHost-Design (docs/brand.md there)")
+    if what in ("stamp", "all"):
+        stamp_version()
+        print("stamp ok")
     if what in ("scenes", "all"):
         write_scenes()
