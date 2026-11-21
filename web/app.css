@@ -1,44 +1,13 @@
-/* ChocoAI harness UI. Tokens mirror ChocoHost-status (src/app/globals.css); rules in docs/pwa-and-ui-design.md. */
+/* ChocoAI harness UI. Colours, radius and dark mode come from the shared design: web/tokens.css (vendored from @chocorot/design plain/tokens.css, loaded BEFORE this file). Rules in docs/pwa-and-ui-design.md. */
 :root {
-  color-scheme: light;
-  --background: oklch(0.99 0.002 240); --foreground: oklch(0.16 0.006 240);
-  --card: oklch(1 0 0); --sidebar: oklch(0.975 0.003 240);
-  --primary: oklch(0.52 0.09 200); --primary-fg: oklch(0.99 0 0);
-  --muted: oklch(0.965 0.004 240); --muted-fg: oklch(0.53 0.008 240);
-  --accent: oklch(0.95 0.015 200); --border: oklch(0.912 0.004 240); --input: oklch(0.912 0.004 240);
-  --destructive: oklch(0.577 0.245 27.325);
-  --up: oklch(0.62 0.15 155); --degraded: oklch(0.75 0.16 60); --down: oklch(0.577 0.22 27); --unknown: oklch(0.58 0.14 275);
-  --user-bubble: oklch(0.94 0.02 200);
-  --radius: 0.5rem; --radius-lg: 0.9rem;
+  /* harness-only names, mapped onto the shared tokens (do not redefine a shared token here) */
+  --primary-fg: var(--primary-foreground); --muted-fg: var(--muted-foreground);
+  --user-bubble: color-mix(in oklab, var(--primary) 14%, var(--card));
+  --radius-lg: 0.9rem;
   --hover: color-mix(in oklab, var(--foreground) 7%, transparent); --press: color-mix(in oklab, var(--foreground) 12%, transparent); /* one overlay for every hover/press, so any surface reacts the same way */
   --dur-fast: 0.15s; --dur-base: 0.2s; --dur-slow: 0.3s; --ease: cubic-bezier(0, 0, 0.2, 1);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-/* dark: used for the system preference (unless the user forced light) and when forced dark. Keep both blocks identical. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --background: oklch(0.15 0.008 240); --foreground: oklch(0.94 0.004 240);
-    --card: oklch(0.19 0.008 240); --sidebar: oklch(0.17 0.008 240);
-    --primary: oklch(0.72 0.11 200); --primary-fg: oklch(0.15 0.02 200);
-    --muted: oklch(0.26 0.008 240); --muted-fg: oklch(0.66 0.01 240);
-    --accent: oklch(0.28 0.03 200); --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%);
-    --destructive: oklch(0.704 0.191 22.216);
-    --up: oklch(0.68 0.16 155); --degraded: oklch(0.78 0.15 60); --down: oklch(0.65 0.2 25); --unknown: oklch(0.72 0.13 275);
-    --user-bubble: oklch(0.27 0.03 200);
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --background: oklch(0.15 0.008 240); --foreground: oklch(0.94 0.004 240);
-  --card: oklch(0.19 0.008 240); --sidebar: oklch(0.17 0.008 240);
-  --primary: oklch(0.72 0.11 200); --primary-fg: oklch(0.15 0.02 200);
-  --muted: oklch(0.26 0.008 240); --muted-fg: oklch(0.66 0.01 240);
-  --accent: oklch(0.28 0.03 200); --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%);
-  --destructive: oklch(0.704 0.191 22.216);
-  --up: oklch(0.68 0.16 155); --degraded: oklch(0.78 0.15 60); --down: oklch(0.65 0.2 25); --unknown: oklch(0.72 0.13 275);
-  --user-bubble: oklch(0.27 0.03 200);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -73,8 +42,8 @@ input, textarea { font: inherit; color: inherit; }
 .top h1 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100vw - 220px); /* the two side groups are equal columns, so the title is truly centred; this keeps a long title from squeezing them */ }
 .top .l, .top .r { display: flex; align-items: center; gap: 4px; min-width: 0; } .top .r { justify-content: flex-end; }
 .brand { display: flex; align-items: center; gap: 8px; }
-.logo { width: 28px; height: 28px; border-radius: 8px; flex: none; /* the brand tile: icons/mark.svg on the brand teal, the same in light and dark */
-  background: url("/icons/mark.svg?v=3") center / 78% no-repeat, linear-gradient(#2fa8b0, #16727a); }
+.logo { width: 28px; height: 28px; border-radius: 8px; flex: none; /* the brand tile: icons/mark.svg on the accent, same shape as the other Choco apps */
+  background: url("/icons/mark.svg?v=3") center / 78% no-repeat, var(--primary); }
 .iconbtn { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--foreground); transition: background var(--dur-fast), transform var(--dur-fast); }
 /* hover and press: the same translucent overlay on every control, whatever its own background */
 .iconbtn:active, .chip:active, .btn:not(.primary):active, .row:not([data-on="true"]):active, .menu-i:active, .me:active, .att:active, .copy:active, .seg button:active, .auto-h .t:active { background-image: linear-gradient(var(--press), var(--press)); }

@@ -4,7 +4,7 @@ Code: `brand/build.py` + `brand/scenes/`, files in `web/icons/`, `web/favicon.ic
 Tests: `StaticTests` in `test_harness.py` (types, placeholder, Host safety, metadata complete, real image sizes, manifest files, favicon.ico).
 
 ## The mark
-A **speech bubble with a centred tail** (mirror symmetric about the vertical axis) holding a **four-point AI spark** at its centre, white on the brand teal (`#35b4bc -> #16727a`, spark `#0f5a61`). Chat + AI, no other imagery: earlier tries (loose squares, a chocolate bar, a bloom) were dropped because they read as an app grid, as chocolate, or as a flower.
+A **speech bubble with a centred tail** (mirror symmetric about the vertical axis) holding a **four-point AI spark** at its centre, white on the brand teal (**stale since 2026-11-21: the app UI accent is now sky-cyan hue 220, but these assets and colours have not been regenerated**) (`#35b4bc -> #16727a`, spark `#0f5a61`). Chat + AI, no other imagery: earlier tries (loose squares, a chocolate bar, a bloom) were dropped because they read as an app grid, as chocolate, or as a flower.
 It is drawn from numbers in `brand/build.py` (bubble path, spark size and pinch): one geometry, no hand-edited SVG, nothing AI-generated. To try another shape, change `BUBBLE`/`spark()` and rerun the build.
 
 | file | use |

@@ -7,7 +7,8 @@ No build step, no framework, no dependency except the vendored `web/vendor/motio
 | file | role |
 |---|---|
 | `index.html` | shell with a static skeleton, so something shows before JS runs |
-| `app.css` | tokens, layout, every component |
+| `tokens.css` | the shared Choco design tokens (colours, radius, light/dark), vendored from `@chocorot/design` `plain/tokens.css`. Do not edit; see `vendor/README.md` to update |
+| `app.css` | harness-only names, layout, every component |
 | `js/theme.js` | sets the saved theme before first paint (a file, not inline, so the CSP can forbid inline scripts) |
 | `js/app.js` | controller: routing, public vs signed-in chat, sheets, sign-in, theme, install, composer |
 | `js/turn.js` | one assistant turn: thinking panel, streamed answer, tool cards, plan, status, notice, error. Fed by SSE events or by a saved chat |
@@ -45,9 +46,11 @@ Adding a JS module: add it to `SHELL` in `sw.js` (a test fails otherwise).
 - Installable: manifest (`display: standalone`), icons, `apple-mobile-web-app-*` tags, service worker (network first, cache as offline fallback; `/api/*` never cached). The Account sheet shows Install when the browser offers it, and a hint on iOS.
 - Code blocks and tables scroll sideways inside their own box.
 
-## Design rules taken from ChocoHost-status
-Source: its `docs/design-principles.md`, `ui-design-system.md`, `ui-motion.md`, `src/app/globals.css`.
-- Same oklch tokens (teal primary, `--background/--card/--muted/--accent/--border/--sidebar`, status colours `--up/--degraded/--down/--unknown`), radius 0.5 rem, light and dark with the same values; theme is System / Light / Dark with its own storage key `choco-harness-theme`.
+## Design rules: the shared Choco design
+Source of truth since 2026-11-21: repo `ChocoHost-Design` (`@chocorot/design`), its `docs/design-rules.md` and `docs/tokens.md`. status and mail use the same package; this app (plain CSS, no build) uses its generated plain-CSS twin as `web/tokens.css`.
+- Same oklch tokens (cyan-to-sky primary hue 220, very dark dark mode, `--background/--card/--muted/--accent/--border/--sidebar`, status colours `--up/--degraded/--down/--unknown`), radius 0.5 rem. `app.css` only maps harness names onto them (`--primary-fg`, `--muted-fg`, `--user-bubble`); never redefine a shared token there.
+- Theme is System / Light / Dark via `data-theme` (the plain twin supports both the system media query and `data-theme`); own storage key `choco-harness-theme`. The shared sites also keep a `choco-theme` cookie on `.chocorot.net`; this app does NOT read it yet (a Phase 4 rewrite in Next.js gets the shared `ThemeProvider`).
+- The brand tile (`.logo`) is now the accent colour with `icons/mark.svg`. The PNG/SVG brand assets (`icon.svg`, `og.png`, store screenshots) are still the OLD teal and are not regenerated: run `python3 brand/build.py` (see branding-and-seo.md) after you have looked at the new look.
 - Colour is never the only signal (icons on tool state, error kind, plan state). Status colours come from tokens, never raw colours.
 - Motion: 0.15 / 0.2 / 0.3 s, ease-out, no overshoot except the small spring on sheets; list stagger capped at 12; `prefers-reduced-motion` is honoured in CSS and in `anim.js`; content is visible before JS.
 - Data driven: behaviour from tables and `/api/me`, unknown ids degrade instead of crashing, state in the URL.
