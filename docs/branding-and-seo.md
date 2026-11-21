@@ -4,20 +4,23 @@ Code: `brand/build.py` + `brand/scenes/`, files in `web/icons/`, `web/favicon.ic
 Tests: `StaticTests` in `test_harness.py` (types, placeholder, Host safety, metadata complete, real image sizes, manifest files, favicon.ico).
 
 ## The mark
-A chocolate bar of 2x2 squares: three dark-chocolate squares with a raised edge and a **golden spark** where the fourth would be (the AI). Brand colours: teal `#2fa8b0 -> #16727a` (matches the app's teal), chocolate `#4f2e1d`, gold `#ffc54d`.
-It is drawn from numbers in `brand/build.py` (square size, groove, corner radius, spark curve): one geometry, no hand-edited SVG, nothing AI-generated.
+A **speech bubble with a centred tail** (mirror symmetric about the vertical axis) holding a **four-point AI spark** at its centre, white on the brand teal (`#35b4bc -> #16727a`, spark `#0f5a61`). Chat + AI, no other imagery: earlier tries (loose squares, a chocolate bar, a bloom) were dropped because they read as an app grid, as chocolate, or as a flower.
+It is drawn from numbers in `brand/build.py` (bubble path, spark size and pinch): one geometry, no hand-edited SVG, nothing AI-generated. To try another shape, change `BUBBLE`/`spark()` and rerun the build.
 
 | file | use |
 |---|---|
-| `icons/mark.svg` | the mark alone, transparent, for light backgrounds. **The app's logo tile uses this file** (CSS `.logo`, one source everywhere) |
-| `icons/mark-light.svg` | same with light squares, for dark backgrounds |
-| `icons/mark-mono.svg` | one colour, for stamps and print |
+| `icons/mark.svg` | white bubble + deep spark, for teal surfaces. **The app's logo tile uses this file** (CSS `.logo`, one source everywhere) |
+| `icons/mark-dark.svg` | deep-teal bubble + white spark, for light backgrounds |
+| `icons/mark-mono.svg` | one colour, bubble only (stamps, print) |
 | `icons/icon.svg` | app icon / favicon (teal tile + mark) |
 | `icons/icon-maskable.svg` | full-bleed version with the mark inside the safe zone |
 | `favicon.ico` | 16, 32 and 48 px PNGs in one file |
 | `icons/icon-192.png`, `icon-512.png`, `apple-touch-icon.png` (180), `icon-maskable-512.png` | PWA and home-screen icons |
 | `icons/og.png` (1200x630) | social preview (Open Graph / Twitter large card) |
 | `icons/screenshot-wide.png`, `screenshot-narrow.png` | install-dialog screenshots listed in the manifest |
+
+### Changing the icon (and why the tab may still show the old one)
+Browsers keep favicons in their own cache, separate from the page cache, for a long time, and home-screen/app icons and social previews are cached by URL. So every icon URL carries `?v=N`. **When the look changes, bump `VERSION` in `brand/build.py` and run `python3 brand/build.py`**: it regenerates the files and rewrites `?v=N` in `web/index.html`, `web/manifest.webmanifest` and `web/app.css`. A new URL is fetched fresh everywhere. (The server ignores the query string.) An already open tab may need one reload; an installed PWA updates its icon after it refreshes its manifest, sometimes only after reinstall.
 
 ## "Photographs", not generated art
 The PNGs are screenshots (Firefox, headless) of real pages: the icons are the SVGs rendered at 1024 px and resized with `sips`; the preview and store screenshots are scenes in `brand/scenes/` built with the app's own CSS and components (`web/js/turn.js`) filled with a sample conversation (a Kyoto trip plan). The wording in the preview only claims what exists: chat for free, sign in for saved chats, web search, documents, scheduled tasks (photos are left out while `vision` is off).
@@ -46,4 +49,5 @@ Images (`.png .svg .ico`) are cached for a day (`Cache-Control: public, max-age=
 ## Not done / not verified
 - I did not test the preview in the platforms' own validators (they need the public URL).
 - iOS uses `apple-touch-icon.png` (no transparency, rounded by the OS); Android uses the maskable icon: both only checked as images, not on devices.
+- The mark was chosen from three symmetrical options by Sir on 2026-11-21; the other two (a flower, nested squares) are not in the repo.
 - `humans.txt`, `security.txt`, per-page titles (single page) and structured data beyond `WebApplication` are not added.

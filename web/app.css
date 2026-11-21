@@ -74,7 +74,7 @@ input, textarea { font: inherit; color: inherit; }
 .top .l, .top .r { display: flex; align-items: center; gap: 4px; min-width: 0; } .top .r { justify-content: flex-end; }
 .brand { display: flex; align-items: center; gap: 8px; }
 .logo { width: 28px; height: 28px; border-radius: 8px; flex: none; /* the brand tile: icons/mark.svg on the brand teal, the same in light and dark */
-  background: url("/icons/mark.svg") center / 78% no-repeat, linear-gradient(#2fa8b0, #16727a); }
+  background: url("/icons/mark.svg?v=3") center / 78% no-repeat, linear-gradient(#2fa8b0, #16727a); }
 .iconbtn { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--foreground); transition: background var(--dur-fast), transform var(--dur-fast); }
 /* hover and press: the same translucent overlay on every control, whatever its own background */
 .iconbtn:active, .chip:active, .btn:not(.primary):active, .row .open:active, .me:active, .att:active, .copy:active, .seg button:active, .auto-h .t:active { background-image: linear-gradient(var(--press), var(--press)); }

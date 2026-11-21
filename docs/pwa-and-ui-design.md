@@ -76,4 +76,4 @@ Source: its `docs/design-principles.md`, `ui-design-system.md`, `ui-motion.md`, 
 - Row actions (delete) appear on hover/focus on hover-capable devices and are always visible on touch.
 - No sentence appears twice on one screen (the privacy line lives only under the composer).
 - Suggestion chips are equal-width grid cells.
-- The brand tile is the same teal tile with `icons/mark.svg` in light and dark, everywhere (`.logo`).
+- The brand tile is the same teal tile with `icons/mark.svg` (the symmetric chat-bubble mark) in light and dark, everywhere (`.logo`).

@@ -1319,7 +1319,7 @@ class StaticTests(SettingsBase):
         self.assertIn('<link rel="canonical" href="http://ai.example.test/">', body)  # no proxy trusted: the forwarded scheme is ignored
         with mock.patch.dict(os.environ, {"HARNESS_TRUST_PROXY": "1"}):
             body = self.head("ai.example.test", "https")
-            self.assertIn('<meta property="og:image" content="https://ai.example.test/icons/og.png">', body)
+            self.assertRegex(body, r'<meta property="og:image" content="https://ai\.example\.test/icons/og\.png\?v=\d+">')  # versioned, so platforms rescrape on change
             self.assertIn('"url":"https://ai.example.test/"', body)
         with mock.patch.dict(os.environ, {"HARNESS_PUBLIC_URL": "https://chat.example.org/"}):  # an explicit address beats the headers
             self.assertIn('href="https://chat.example.org/"', self.head("evil.test", "http"))

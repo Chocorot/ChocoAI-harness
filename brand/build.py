@@ -6,6 +6,7 @@ Dev tool, macOS: needs Firefox (headless screenshots) and `sips` (resizing). Not
 Usage: python3 brand/build.py [svg|icons|scenes|all]   (default all). Output goes to web/ (see docs/branding-and-seo.md)."""
 import functools
 import http.server
+import re
 import shutil
 import struct
 import subprocess
@@ -18,26 +19,23 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB, SCENES = ROOT / "web", ROOT / "brand" / "scenes"
 FIREFOX = "/Applications/Firefox.app/Contents/MacOS/firefox"
 
-# ---- the mark: a chocolate bar of 2x2 squares, one square is an AI spark (64 x 64 grid) ----------------------------------
-BG_TOP, BG_BOT = "#2fa8b0", "#16727a"  # brand teal, light to deep
-CHOC, SPARK = "#4f2e1d", "#ffc54d"  # dark chocolate, golden spark
-T, GAP, M, R = 25.5, 3, 5, 6  # square size, groove, margin, corner radius
-POS = (M, M + T + GAP)  # 5 and 33.5
-CX = POS[1] + T / 2  # centre of the right column
-SPARK_PATH = (f"M{CX:.2f} 3.2C{CX + 1.5:.2f} 12.6 {CX + 5:.2f} 16.3 {CX + 14.2:.2f} 17.75C{CX + 5:.2f} 19.2 {CX + 1.5:.2f} 22.9 {CX:.2f} 32.3"
-              f"C{CX - 1.5:.2f} 22.9 {CX - 5:.2f} 19.2 {CX - 14.2:.2f} 17.75C{CX - 5:.2f} 16.3 {CX - 1.5:.2f} 12.6 {CX:.2f} 3.2Z")
+# ---- the mark: a speech bubble with a centred tail (mirror symmetric) holding an AI spark (64 x 64 grid) ------------------
+VERSION = 3  # bump when the look changes: it is written into the icon URLs (?v=N), so browsers and apps refetch instead of showing a cached icon
+BG_TOP, BG_BOT = "#35b4bc", "#16727a"  # brand teal, light to deep
+DEEP, WHITE = "#0f5a61", "#ffffff"
+BUBBLE = "M20 12h24a9 9 0 0 1 9 9v16a9 9 0 0 1-9 9H37.5L32 52l-5.5-6H20a9 9 0 0 1-9-9V21a9 9 0 0 1 9-9z"
+SPARK_C, SPARK_R, PINCH = (32, 29), 10.5, 0.12  # centred in the bubble body, so the whole mark is symmetric about x = 32
 
 
-def square(x, y, fill, shine="#ffffff", shine_opacity=0.16):
-    """One chocolate square: flat colour plus a thin raised edge, which fades away at small sizes."""
-    return (f'<rect x="{x}" y="{y}" width="{T}" height="{T}" rx="{R}" fill="{fill}"/>'
-            f'<rect x="{x + 3.2}" y="{y + 3.2}" width="{T - 6.4}" height="{T - 6.4}" rx="{R - 2.6}" fill="none" stroke="{shine}" stroke-opacity="{shine_opacity}" stroke-width="1.3"/>')
+def spark(fill):
+    (cx, cy), r, k = SPARK_C, SPARK_R, PINCH
+    return (f'<path fill="{fill}" d="M{cx} {cy - r}Q{cx + r * k:.2f} {cy - r * k:.2f} {cx + r} {cy}Q{cx + r * k:.2f} {cy + r * k:.2f} {cx} {cy + r}'
+            f'Q{cx - r * k:.2f} {cy + r * k:.2f} {cx - r} {cy}Q{cx - r * k:.2f} {cy - r * k:.2f} {cx} {cy - r}Z"/>')
 
 
-def mark(tile=CHOC, spark=SPARK, shine="#ffffff", shine_opacity=0.16):
-    """The mark alone on a 64 grid: three squares and the spark in the top right."""
-    sq = "".join(square(x, y, tile, shine, shine_opacity) for x, y in ((POS[0], POS[0]), (POS[0], POS[1]), (POS[1], POS[1])))
-    return f'{sq}<path fill="{spark}" d="{SPARK_PATH}"/>'
+def mark(bubble=WHITE, sparkle=DEEP):
+    """The mark alone on a 64 grid. Default colours are for teal surfaces."""
+    return f'<path fill="{bubble}" d="{BUBBLE}"/>{spark(sparkle)}'
 
 
 def svg(inner, size=64, view="0 0 64 64", extra=""):
@@ -56,12 +54,22 @@ def scaled(k):  # the mark scaled about the centre of the grid
 def write_svgs():
     icons = WEB / "icons"
     icons.mkdir(exist_ok=True)
-    (icons / "mark.svg").write_text(svg(mark(), extra=' role="img" aria-label="ChocoAI"'))  # transparent, for light backgrounds
-    (icons / "icon.svg").write_text(svg(tile_bg(14) + scaled(0.74), extra=' role="img" aria-label="ChocoAI"'))  # app icon / favicon
-    (icons / "icon-maskable.svg").write_text(svg(f'<rect width="64" height="64" fill="{BG_BOT}"/>' + tile_bg(0, "m") + scaled(0.5)))  # full bleed, mark inside the safe zone
-    (icons / "mark-light.svg").write_text(svg(mark("#f4ece6", SPARK, "#4f2e1d", 0.18), extra=' role="img" aria-label="ChocoAI"'))  # for dark backgrounds
-    (icons / "mark-mono.svg").write_text(svg(mark("#000", "#000", "#fff", 0)))  # one colour (stamps, print)
+    label = ' role="img" aria-label="ChocoAI"'
+    (icons / "mark.svg").write_text(svg(mark(), extra=label))  # white bubble: for teal surfaces. The app's logo tile uses this file
+    (icons / "mark-dark.svg").write_text(svg(mark(DEEP, WHITE), extra=label))  # deep teal bubble: for light backgrounds
+    (icons / "mark-mono.svg").write_text(svg(f'<path d="{BUBBLE}"/>', extra=label))  # one colour, no spark detail (stamps, print)
+    (icons / "icon.svg").write_text(svg(tile_bg(14) + scaled(0.9), extra=label))  # app icon / favicon
+    (icons / "icon-maskable.svg").write_text(svg(f'<rect width="64" height="64" fill="{BG_BOT}"/>' + tile_bg(0, "m") + scaled(0.56)))  # full bleed, mark inside the safe zone
+    stamp_version()
     print("svg ok")
+
+
+def stamp_version():
+    """Write ?v=VERSION into every icon/preview URL of the page head, the manifest and the stylesheet."""
+    for f in (WEB / "index.html", WEB / "manifest.webmanifest", WEB / "app.css"):
+        text = f.read_text()
+        text = re.sub(r"((?:/favicon\.ico|/icons/[\w.\-]+\.(?:png|svg)))(?:\?v=\d+)?(?=[\"'])", rf"\1?v={VERSION}", text)
+        f.write_text(text)
 
 
 # ---- rendering: Firefox photographs a page, sips resizes -------------------------------------------------------------------
