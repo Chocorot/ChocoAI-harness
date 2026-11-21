@@ -40,6 +40,8 @@ FIELDS = [
      "help": "Prompt + reply tokens added up over every model call of a run (prompts are re-sent each turn)."},
     {"key": "delegate_turns", "label": "Max turns of a helper", "type": "int", "default": 8, "min": 1, "max": 50,
      "help": "Model calls a delegated subtask may use before it must report back."},
+    {"key": "smart_titles", "label": "Model-written chat titles", "type": "bool", "default": True,
+     "help": "After the first answer of a new chat, ask the model for a short title (a few seconds of model time, queued behind live chats). Off = the title stays the first words of the first message."},
     {"key": "max_automations", "label": "Max automations per user", "type": "int", "default": 5, "min": 0, "max": 50,
      "help": "Scheduled prompts one signed-in user may keep. 0 switches creating new ones off."},
     {"key": "min_interval_min", "label": "Shortest automation interval (minutes)", "type": "int", "default": 15, "min": 1, "max": 1440,

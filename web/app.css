@@ -77,13 +77,13 @@ input, textarea { font: inherit; color: inherit; }
   background: url("/icons/mark.svg?v=3") center / 78% no-repeat, linear-gradient(#2fa8b0, #16727a); }
 .iconbtn { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--foreground); transition: background var(--dur-fast), transform var(--dur-fast); }
 /* hover and press: the same translucent overlay on every control, whatever its own background */
-.iconbtn:active, .chip:active, .btn:not(.primary):active, .row .open:active, .me:active, .att:active, .copy:active, .seg button:active, .auto-h .t:active { background-image: linear-gradient(var(--press), var(--press)); }
+.iconbtn:active, .chip:active, .btn:not(.primary):active, .row:not([data-on="true"]):active, .menu-i:active, .me:active, .att:active, .copy:active, .seg button:active, .auto-h .t:active { background-image: linear-gradient(var(--press), var(--press)); }
 .iconbtn:active { transform: scale(0.92); }
 @media (hover: hover) {
-  .iconbtn:hover, .chip:hover, .btn:not(.primary):not(.armed):hover, .row:not([data-on="true"]) .open:hover, .me:hover, .att:hover, .copy:hover, .seg button:not([aria-pressed="true"]):hover, .row .del:hover, .auto-h .t:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
+  .iconbtn:hover, .chip:hover, .btn:not(.primary):not(.armed):hover, .row:not([data-on="true"]):hover, .menu-i:not(.armed):hover, .me:hover, .att:hover, .copy:hover, .seg button:not([aria-pressed="true"]):hover, .auto-h .t:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
   .btn.primary:hover, .send:not(:disabled):hover { filter: brightness(1.08); }
-  .row .del { opacity: 0; transition: opacity var(--dur-fast); }
-  .row:hover .del, .row:focus-within .del, .row .del.armed { opacity: 1; }
+  .row .more { opacity: 0; transition: opacity var(--dur-fast); }
+  .row:hover .more, .row:focus-within .more, .row .more[aria-expanded="true"] { opacity: 1; }
 }
 .btn { min-height: 44px; padding: 0 16px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--card); transition: background var(--dur-fast), transform var(--dur-fast), opacity var(--dur-fast); }
 .btn:active { transform: scale(0.97); }
@@ -224,11 +224,11 @@ input, textarea { font: inherit; color: inherit; }
 .list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
 .row { display: flex; align-items: center; gap: 4px; border-radius: 12px; min-height: 52px; }
 .row[data-on="true"] { background: var(--accent); }
-.row .open { flex: 1; min-width: 0; min-height: 52px; padding: 6px 4px 6px 12px; text-align: left; border-radius: 12px; }
+.row .open { flex: 1; min-width: 0; min-height: 52px; padding: 6px 4px 6px 12px; text-align: left; border-radius: 12px; background: none; } /* the highlight belongs to the whole row, never to the button inside it */
 .row .t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; }
 .row small { color: var(--muted-fg); font-size: 0.75rem; }
-.row .del { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; color: var(--muted-fg); }
-.row .del.armed { color: var(--destructive); font-size: 0.78rem; width: auto; padding: 0 10px; font-weight: 600; }
+.row .more { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; color: var(--muted-fg); }
+.row .edit { flex: 1; min-width: 0; padding: 6px 4px 6px 8px; } .rename { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--primary); border-radius: 10px; background: var(--card); font-size: 16px; outline: 0; box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent); }
 .list-empty { padding: 24px 12px; text-align: center; color: var(--muted-fg); font-size: 0.9rem; }
 .side-f { padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
 .me { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 8px; border-radius: 12px; text-align: left; }
@@ -298,3 +298,12 @@ input, textarea { font: inherit; color: inherit; }
 .field textarea, .field select { min-height: 46px; padding: 10px 14px; border: 1px solid var(--input); border-radius: 12px; background: var(--card); font-size: 16px; font-weight: 400; outline: 0; resize: vertical; }
 .field select { padding: 0 14px; } .field input[type="time"] { min-width: 0; }
 .field textarea:focus, .field select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 25%, transparent); }
+
+/* ---- popover menu (chat options, thinking effort) ---- */
+.menu { position: fixed; z-index: 60; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 10px 36px oklch(0 0 0 / 22%); }
+.menu-i { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 12px; border-radius: 10px; text-align: left; }
+.menu-i .mt { flex: 1; min-width: 0; display: flex; flex-direction: column; } .menu-i .mt b { font-weight: 500; } .menu-i small { color: var(--muted-fg); font-size: 0.78rem; }
+.menu-i .ck { color: var(--primary); flex: none; }
+.menu-i.danger { color: var(--destructive); } .menu-i.armed { background: var(--destructive); color: var(--primary-fg); } .menu-i.armed small { color: inherit; }
+.effort { flex: none; border-radius: 50%; color: var(--muted-fg); }
+.effort[aria-expanded="true"] { background-image: linear-gradient(var(--hover), var(--hover)); color: var(--foreground); }

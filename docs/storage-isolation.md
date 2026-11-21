@@ -17,6 +17,7 @@ Tests: `ModesTests.test_users_cannot_see_touch_or_resume_each_others_sessions`, 
 
 ## Limits (be honest)
 - `run_bash` (allowlisted users, admin) is not confined: it can read other users' files. Everyone else only gets path-confined file tools.
+- Each chat row also holds `title`, `title_state` and `effort` (chats.md).
 - Thinking text is not stored yet (planned with the frontend rewrite).
 - No quota per user for disk or number of sessions yet.
 - The original `harness.db` is not migrated; the manage API (`/manage/*`) still only sees it. Per-user chats are invisible to the dashboard (stats, sessions, errors list) except server errors, which are logged globally.

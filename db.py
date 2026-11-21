@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS automations(id INTEGER PRIMARY KEY, owner TEXT, name 
   enabled INTEGER DEFAULT 1, next_run REAL, last_run REAL, last_status TEXT, last_session INTEGER, created REAL);
 CREATE INDEX IF NOT EXISTS msg_session ON messages(session);
 """
+# title: shown in the chat list (NULL = use `goal`). title_state: 0 = made from the first message, 1 = written by the model,
+# 2 = named by the user or a job (never overwritten). effort: the chat's thinking level.
+SESSION_COLUMNS = (("title", "TEXT"), ("title_state", "INTEGER DEFAULT 0"), ("effort", "TEXT"))
 ERROR_KEEP = 200  # the errors table is a ring: only the newest rows are kept
 
 
@@ -24,13 +27,37 @@ def connect(path=None):
     db = sqlite3.connect(path or os.environ.get("HARNESS_DB", "harness.db"))
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript(SCHEMA)
+    have = {r[1] for r in db.execute("PRAGMA table_info(sessions)")}
+    for col, ddl in SESSION_COLUMNS:  # databases created before a column existed get it added once
+        if col not in have:
+            db.execute(f"ALTER TABLE sessions ADD COLUMN {col} {ddl}")
     return db
 
 
-def new_session(db, goal):
-    cur = db.execute("INSERT INTO sessions(goal, created) VALUES(?,?)", (goal, time.time()))
+def new_session(db, goal, title=None, state=0, effort=None):
+    cur = db.execute("INSERT INTO sessions(goal, created, title, title_state, effort) VALUES(?,?,?,?,?)",
+                     (goal, time.time(), title, state, effort))
     db.commit()
     return cur.lastrowid
+
+
+def get_session(db, sid):
+    """{title, titleState, effort} of one session, or None."""
+    r = db.execute("SELECT COALESCE(title, goal), COALESCE(title_state, 0), effort FROM sessions WHERE id=?", (sid,)).fetchone()
+    return {"title": r[0] or "", "titleState": r[1], "effort": r[2]} if r else None
+
+
+def set_effort(db, sid, effort):
+    db.execute("UPDATE sessions SET effort=? WHERE id=?", (effort, sid))
+    db.commit()
+
+
+def rename(db, sid, title, state):
+    """Set a title. A model-written title (state 1) only lands while the title is still the automatic one (state 0)."""
+    cur = db.execute("UPDATE sessions SET title=?, title_state=? WHERE id=?" + (" AND COALESCE(title_state,0)=0" if state == 1 else ""),
+                     (title, state, sid))
+    db.commit()
+    return cur.rowcount > 0
 
 
 def session_exists(db, sid):
@@ -97,10 +124,10 @@ def stats(db):
 
 def list_sessions(db, limit=50):
     rows = db.execute(
-        "SELECT s.id, s.goal, s.created,"
+        "SELECT s.id, s.goal, s.created, COALESCE(s.title, s.goal), COALESCE(s.title_state, 0), s.effort,"
         " (SELECT COUNT(*) FROM usage u WHERE u.session=s.id),"
         " (SELECT COALESCE(SUM(COALESCE(prompt_tokens,0)+COALESCE(completion_tokens,0)),0) FROM usage u WHERE u.session=s.id),"
         " (SELECT COUNT(*) FROM audit a WHERE a.session=s.id)"
         " FROM sessions s ORDER BY s.id DESC LIMIT ?", (limit,))
-    return [{"id": r[0], "goal": (r[1] or "")[:200], "created": r[2], "turns": r[3], "tokens": r[4], "toolCalls": r[5]}
-            for r in rows]
+    return [{"id": r[0], "goal": (r[1] or "")[:200], "created": r[2], "title": (r[3] or "")[:200], "titleState": r[4], "effort": r[5],
+             "turns": r[6], "tokens": r[7], "toolCalls": r[8]} for r in rows]

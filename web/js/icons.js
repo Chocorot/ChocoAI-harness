@@ -34,6 +34,8 @@ const P = {
   arrowdown: "M12 5v14M6 13l6 6 6-6",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0",
   mail: "M3 6h18v12H3zM3 7l9 7 9-7",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
+  pencil: "M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16zM13.5 6.5l4 4",
   paperclip: "M20 11.5l-8 8a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8",
   image: "M4 5h16v14H4zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM4 17l5-5 4 4 3-3 4 4",
 };
@@ -41,3 +43,10 @@ export function icon(name, size = 18, cls = "") {
   return `<svg class="ic ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[name] || "M12 11v2"}"/></svg>`;
 }
 export const hasIcon = (name) => name in P;
+
+// Thinking-effort meter: three ascending bars, the first `level + 1` of `total` filled. level is the 0-based index of the chosen level.
+export function effortIcon(level, total = 3, size = 22) {
+  const bars = [[4.5, 13, 4, 7], [10, 9, 4, 11], [15.5, 4.5, 4, 15.5]].slice(0, total);
+  const r = bars.map(([x, y, w, h], n) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.6" fill="currentColor" fill-opacity="${n <= level ? 1 : 0.28}"/>`).join("");
+  return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${r}</svg>`;
+}

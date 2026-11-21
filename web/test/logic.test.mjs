@@ -4,7 +4,7 @@ import test from "node:test";
 const root = new URL("../js/", import.meta.url).href;
 const { renderMarkdown, splitBlocks, inline, esc } = await import(root + "md.js");
 const { splitEvents, splitThink } = await import(root + "sse.js");
-const { icon, hasIcon } = await import(root + "icons.js");
+const { icon, hasIcon, effortIcon } = await import(root + "icons.js");
 const { parseUserContent, fmtSize, extOf } = await import(root + "attach.js");
 
 test("html is always escaped", () => {
@@ -76,4 +76,13 @@ test("saved user messages: text, documents and photos are told apart again", () 
 test("sizes and extensions", () => {
   assert.equal(fmtSize(500), "500 B"); assert.equal(fmtSize(2048), "2 KB"); assert.equal(fmtSize(1572864), "1.5 MB");
   assert.equal(extOf("Report.PDF"), ".pdf"); assert.equal(extOf("noext"), ""); assert.equal(extOf("a.b.c.docx"), ".docx");
+});
+
+test("effort meter fills as many bars as the level index plus one", () => {
+  const filled = (svg) => [...svg.matchAll(/fill-opacity="([\d.]+)"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(filled(effortIcon(0, 3)), [1, 0.28, 0.28]);
+  assert.deepEqual(filled(effortIcon(1, 3)), [1, 1, 0.28]);
+  assert.deepEqual(filled(effortIcon(2, 3)), [1, 1, 1]);
+  assert.equal((effortIcon(0, 2).match(/<rect/g) || []).length, 2); // fewer levels, fewer bars
+  assert.ok(hasIcon("more") && hasIcon("pencil"));
 });

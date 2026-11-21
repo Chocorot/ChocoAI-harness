@@ -27,6 +27,7 @@ Adding a JS module: add it to `SHELL` in `sw.js` (a test fails otherwise).
 - **Signed in**: chat list (sidebar from 768 px, Chats sheet on phones), open/delete (two-tap confirm), new chat. Saved chats replay messages, tool calls, results and plans (thinking text is not stored, so reloaded chats show no thinking panel).
 - **Attachments** (signed in, when `/api/me` says so): paperclip, paste, drag and drop; chips with a thumbnail above the composer; the sent message shows the photo and document chips; saved chats load them back from `/api/sessions/<id>/uploads/...` (attachments.md).
 - **Automations** (when `/api/me` says `automations`): a clock button in the sidebar header (desktop) and a row in the Chats sheet (phone) open a sheet with the list (name, schedule, next/last run, on/off switch, Run now, Last result, two-tap Delete) and a form (name, prompt, Repeat or Daily). See automations.md.
+- **Chat rows**: a ⋯ menu (Rename in place, Delete with a second tap); the whole row is highlighted as one block. **Effort**: a three-bar button in the composer opens Low / Medium / High (chats.md).
 - **Streaming**: events are applied per animation frame; only the last markdown block re-renders, new blocks fade in, a pulsing dot marks the end of the text. "Jump to latest" appears when scrolled up; auto-scroll sticks only while near the bottom.
 - **Thinking panel**: shimmer label with a live timer, open while reasoning streams, collapses to "Thought for Ns" when the answer starts (unless the user opened or closed it). Reasoning written inline as `<think>...</think>` is handled too.
 - **Tool cards**: running / ok / failed with elapsed time; failures open by themselves. Helper output (`sub` events) is nested inside the Helper card. `update_plan` is shown as a live checklist instead of a card.
@@ -73,7 +74,7 @@ Source: its `docs/design-principles.md`, `ui-design-system.md`, `ui-motion.md`, 
 - Header and sidebar header have the **same height**, so their bottom lines meet.
 - **One hover/press overlay** for every control (`--hover`, `--press`, a translucent layer drawn over whatever background the control has), so buttons, chips, rows, attachment chips and menu rows all react the same way. Hover styles only inside `@media (hover: hover)`.
 - Controls inside the pill-shaped composer are **round** (attach, send); the disabled send button is neutral grey, not a faded accent.
-- Row actions (delete) appear on hover/focus on hover-capable devices and are always visible on touch.
+- Row actions (the ⋯ button) appear on hover/focus on hover-capable devices and are always visible on touch.
 - No sentence appears twice on one screen (the privacy line lives only under the composer).
 - Suggestion chips are equal-width grid cells.
 - The brand tile is the same teal tile with `icons/mark.svg` (the symmetric chat-bubble mark) in light and dark, everywhere (`.logo`).

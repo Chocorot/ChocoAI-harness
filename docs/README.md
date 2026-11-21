@@ -12,6 +12,7 @@ Read the doc for the area you are about to change. Update it in the same change.
 | [attachments.md](attachments.md) | Photos (vision) and documents (txt, docx, pdf): limits, what the model gets, serving, setting |
 | [automations.md](automations.md) | Scheduled prompts: schedule data, scheduler, permissions, API |
 | [branding-and-seo.md](branding-and-seo.md) | The mark, icons, favicon, social preview, manifest, SEO tags, how they are generated |
+| [chats.md](chats.md) | Chat titles (instant + model-written), renaming, per-chat thinking effort |
 | [errors.md](errors.md) | Typed errors, what the user sees, what the model sees, retries, failure log |
 | [chat-streaming.md](chat-streaming.md) | `/task` request and SSE events, run queue, keepalive, status events |
 

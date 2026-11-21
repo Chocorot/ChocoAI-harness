@@ -27,6 +27,8 @@ import settings
 import tools
 import web
 
+REAL_CHAT = harness.chat  # the API test classes replace harness.chat with a fake; this is the real one
+
 
 class ToolTests(unittest.TestCase):
     def setUp(self):
@@ -706,8 +708,8 @@ class FakeModel:
     def __init__(self, *replies):
         self.replies, self.calls = list(replies), []
 
-    def __call__(self, messages, emit, schemas=None, max_tokens=None):
-        self.calls.append({"messages": list(messages), "schemas": schemas, "max_tokens": max_tokens})  # copy: the loop keeps appending
+    def __call__(self, messages, emit, schemas=None, max_tokens=None, effort=None):
+        self.calls.append({"messages": list(messages), "schemas": schemas, "max_tokens": max_tokens, "effort": effort})  # copy: the loop keeps appending
         r = self.replies.pop(0) if self.replies else "ok"
         if isinstance(r, dict):
             return r, {}
@@ -730,7 +732,7 @@ class ApiBase(SettingsBase):
         os.environ.update(HARNESS_SESSION_KEY="k" * 32, HARNESS_SHELL_USERS="root@example.com", HARNESS_TOKEN="tok")
         for k in ("HARNESS_TRUST_PROXY", "HARNESS_INSECURE_COOKIES"):
             os.environ.pop(k, None)
-        settings.save({"retries": 0})
+        settings.save({"retries": 0, "smart_titles": False})  # the title helper makes its own model call; tests of it switch it on
         patches = [mock.patch.object(auth, "verify_password", lambda a, p: PASSWORDS.get(a) == p),
                    mock.patch.object(harness, "chat", FakeModel())]
         for p in patches:
@@ -1184,7 +1186,7 @@ class AgentModeTests(SettingsBase):
         self.assertFalse(any("sub" in e for e in self.evs if e["t"] == "tool" and e["name"] == "delegate"))
 
     def test_delegate_failure_is_a_tool_error_not_a_dead_run(self):
-        def chat(messages, emit, schemas=None, max_tokens=None):
+        def chat(messages, emit, schemas=None, max_tokens=None, effort=None):
             if len(messages) == 2 and harness.HELPER_PROMPT in messages[0]["content"]:
                 raise errors.HarnessError("upstream_down")
             return (call("delegate", {"task": "x"}), {}) if messages[-1]["role"] == "user" else ({"role": "assistant", "content": "ok anyway"}, {})
@@ -1200,7 +1202,7 @@ class AgentModeTests(SettingsBase):
     def test_time_budget_stops_with_a_notice(self):
         settings.save({"max_seconds": 1})
 
-        def slow(messages, emit, schemas=None, max_tokens=None):
+        def slow(messages, emit, schemas=None, max_tokens=None, effort=None):
             time.sleep(1.1)
             return call("update_plan", {"steps": ["a"]}), {}
         out, _, _ = self.run_it(slow, max_turns=5)
@@ -1771,7 +1773,7 @@ class AutomationApiTests(ApiBase):
         self.assertTrue({"web_fetch", "web_search", "update_plan"} <= set(names))
         self.assertNotIn("run_bash", names)  # unattended jobs never get the shell
         sessions = self.api("GET", "/api/sessions", cookie=root)[1]["sessions"]
-        self.assertEqual([s["goal"] for s in sessions], ["\u23f0 Daily digest"])
+        self.assertEqual([(s["title"], s["titleState"]) for s in sessions], [("\u23f0 Daily digest", 2)])  # a job's name is never replaced by an automatic title
         msgs = self.api("GET", f"/api/sessions/{sessions[0]['id']}", cookie=root)[1]["messages"]
         self.assertEqual([(m["role"], m["content"]) for m in msgs], [("user", "Make the digest"), ("assistant", "ok")])
         s = self.api("GET", "/api/automations", cookie=root)[1]["automations"][0]
@@ -1797,6 +1799,186 @@ class AutomationApiTests(ApiBase):
             time.sleep(0.05)
         self.assertEqual((s["lastStatus"], s["nextRun"]), ("ok", a["nextRun"]))
         self.assertEqual(len(self.api("GET", "/api/sessions", cookie=self.alice)[1]["sessions"]), 1)
+
+
+class TitleUnitTests(SettingsBase):
+    def test_short_title_and_clean_title(self):
+        st = harness.short_title
+        self.assertEqual(st("hi"), "hi")
+        self.assertEqual(st(""), "New chat")
+        self.assertEqual(st("   \n\n  "), "New chat")
+        self.assertEqual(st("# Plan a trip to https://example.org/kyoto-guide and check the weather for next week please"), "Plan a trip to example.org and check the\u2026")
+        self.assertEqual(st("first line\nsecond line"), "first line")
+        self.assertEqual(st("a" * 100), "a" * 48 + "\u2026")  # no space to cut at
+        self.assertLessEqual(len(st("word " * 40)), 49)
+        ct = harness.clean_title
+        self.assertEqual(ct('Title: "Kyoto trip plan."\nExtra explanation'), "Kyoto trip plan")
+        self.assertEqual(ct("**Weather in Kyoto**"), "Weather in Kyoto")
+        for unusable in ("", "   ", "x", None, "\n\n"):
+            self.assertEqual(ct(unusable), "", repr(unusable))
+        self.assertLessEqual(len(ct("word " * 40)), 60)
+
+    def test_old_databases_gain_the_new_columns_and_keep_their_chats(self):
+        p = f"{self.t.name}/old.db"
+        import sqlite3
+        c = sqlite3.connect(p)
+        c.executescript("CREATE TABLE sessions(id INTEGER PRIMARY KEY, goal TEXT, created REAL); INSERT INTO sessions(goal, created) VALUES('old chat', 1);")
+        c.commit()
+        c.close()
+        conn = db.connect(p)
+        s = db.list_sessions(conn)[0]
+        self.assertEqual((s["goal"], s["title"], s["titleState"], s["effort"]), ("old chat", "old chat", 0, None))  # falls back to the first message
+        db.connect(p).close()  # connecting twice must not try to add the columns again
+
+    def test_a_model_title_never_replaces_a_name_the_user_chose(self):
+        conn = db.connect()
+        sid = db.new_session(conn, "hi", "hi")
+        self.assertTrue(db.rename(conn, sid, "Model title", 1))
+        self.assertFalse(db.rename(conn, sid, "Second model title", 1))  # one automatic title per chat
+        self.assertTrue(db.rename(conn, sid, "My name", 2))
+        self.assertFalse(db.rename(conn, sid, "Late model title", 1))
+        self.assertEqual(db.get_session(conn, sid), {"title": "My name", "titleState": 2, "effort": None})
+
+
+class ChatManagementTests(ApiBase):
+    def setUp(self):
+        super().setUp()
+        self.alice = self.login("alice@example.com")
+
+    def wait_for(self, cond, what="condition"):
+        for _ in range(150):
+            r = cond()
+            if r:
+                return r
+            time.sleep(0.02)
+        self.fail(f"timed out waiting for {what}")
+
+    def listing(self):
+        return self.api("GET", "/api/sessions", cookie=self.alice)[1]["sessions"]
+
+    def new_chat(self, goal="Plan a 3 day trip to Kyoto and check the weather for next week", **kw):
+        return self.stream("/api/chat", {"goal": goal, **kw}, self.alice)[1][0]["id"]
+
+    # ---- titles ----
+    def test_a_new_chat_gets_an_instant_title_from_its_first_message(self):
+        sid = self.new_chat()
+        s = self.listing()[0]
+        self.assertEqual((s["id"], s["title"], s["titleState"], s["goal"]), (sid, "Plan a 3 day trip to Kyoto and check the\u2026", 0, "Plan a 3 day trip to Kyoto and check the weather for next week"))
+
+    def test_the_model_writes_a_better_title_after_the_first_answer(self):
+        settings.save({"smart_titles": True})
+        harness.chat = self.model = FakeModel("Here is a plan.", "Kyoto trip plan")
+        sid = self.new_chat()
+        s = self.wait_for(lambda: next((x for x in self.listing() if x["titleState"] == 1), None), "model title")
+        self.assertEqual((s["id"], s["title"]), (sid, "Kyoto trip plan"))
+        ask = self.model.calls[1]
+        self.assertEqual((ask["schemas"], ask["max_tokens"], ask["effort"]), ([], 60, "low"))  # no tools, short, cheap
+        self.assertIn("Plan a 3 day trip", ask["messages"][1]["content"])
+        self.assertIn("Here is a plan.", ask["messages"][1]["content"])
+        self.stream("/api/chat", {"session": sid, "goal": "and day two?"}, self.alice)  # a follow-up never asks for another title
+        time.sleep(0.3)
+        self.assertEqual(len(self.model.calls), 3)  # the follow-up's own answer only
+
+    def test_a_title_the_user_typed_survives_a_slow_model_title(self):
+        settings.save({"smart_titles": True})
+        gate = threading.Event()
+
+        def model(messages, emit, schemas=None, max_tokens=None, effort=None):
+            if effort == "low":  # the title request
+                gate.wait(5)
+                return {"role": "assistant", "content": "Auto title"}, {}
+            return {"role": "assistant", "content": "answer"}, {}
+        harness.chat = model
+        sid = self.new_chat()
+        self.assertEqual(self.api("PATCH", f"/api/sessions/{sid}", {"title": "  My   own name "}, self.alice)[1]["title"], "My own name")
+        gate.set()
+        time.sleep(0.4)
+        s = self.listing()[0]
+        self.assertEqual((s["title"], s["titleState"]), ("My own name", 2))
+
+    def test_title_failures_and_the_setting_leave_the_automatic_title_alone(self):
+        settings.save({"smart_titles": True})
+        for title_reply in (errors.HarnessError("upstream_down"), "", "   ", "\n"):
+            def model(messages, emit, schemas=None, max_tokens=None, effort=None, reply=title_reply):
+                if effort == "low":
+                    if isinstance(reply, Exception):
+                        raise reply
+                    return {"role": "assistant", "content": reply}, {}
+                return {"role": "assistant", "content": "answer"}, {}
+            harness.chat = model
+            status, evs = self.stream("/api/chat", {"goal": "hello there"}, self.alice)
+            self.assertEqual((status, evs[-1]["t"]), (200, "done"))  # the user never sees a title problem
+        time.sleep(0.4)
+        self.assertEqual({(s["title"], s["titleState"]) for s in self.listing()}, {("hello there", 0)})
+        settings.save({"smart_titles": False})
+        harness.chat = self.model = FakeModel("answer", "Should not be asked")
+        self.new_chat("another chat")
+        time.sleep(0.3)
+        self.assertEqual(len(self.model.calls), 1)
+
+    # ---- rename ----
+    def test_rename_validation_and_isolation(self):
+        sid = self.new_chat("hello")
+        patch = lambda body, cookie=None, **kw: self.api("PATCH", f"/api/sessions/{sid}", body, cookie, **kw)
+        status, body, _ = patch({"title": "Trip notes"}, self.alice)
+        self.assertEqual((status, body["title"], body["titleState"]), (200, "Trip notes", 2))
+        self.assertEqual(self.api("GET", f"/api/sessions/{sid}", cookie=self.alice)[1]["title"], "Trip notes")
+        for bad in ({}, {"title": ""}, {"title": "   "}, {"title": "x" * 81}, {"title": 5}, {"title": None, "effort": None}, {"effort": "extreme"}):
+            self.assertEqual(patch(bad, self.alice)[0], 400, bad)
+        bob = self.login("bob@example.com")
+        self.assertEqual(patch({"title": "mine now"}, bob)[0], 404)  # somebody else's chat looks like no chat
+        self.assertEqual(patch({"title": "x"})[0], 401)  # not signed in
+        self.assertEqual(patch({"title": "x"}, self.alice, headers={"Origin": "https://evil.example"})[0], 403)
+        self.assertEqual(self.api("PATCH", "/api/sessions/999", {"title": "x"}, self.alice)[0], 404)
+        self.assertEqual(self.listing()[0]["title"], "Trip notes")
+
+    # ---- thinking effort ----
+    def test_levels_are_offered_from_one_table(self):
+        e = self.api("GET", "/api/me")[1]["capabilities"]["effort"]
+        self.assertEqual((e["default"], [x["id"] for x in e["levels"]]), ("medium", ["low", "medium", "high"]))
+        self.assertTrue(all(x["label"] and x["desc"] for x in e["levels"]))
+
+    def test_effort_is_sent_as_a_field_and_a_prompt_hint_and_remembered_per_chat(self):
+        sid = self.new_chat("think hard", effort="high")
+        call = self.model.calls[0]
+        self.assertEqual(call["effort"], "high")
+        self.assertIn(harness.EFFORT["high"]["hint"], call["messages"][0]["content"])
+        self.assertEqual(self.api("GET", f"/api/sessions/{sid}", cookie=self.alice)[1]["effort"], "high")
+        self.stream("/api/chat", {"session": sid, "goal": "more"}, self.alice)  # no level sent: the chat keeps its own
+        self.assertEqual(self.model.calls[1]["effort"], "high")
+        self.stream("/api/chat", {"session": sid, "goal": "quick one", "effort": "low"}, self.alice)  # changed for this chat
+        self.assertEqual((self.model.calls[2]["effort"], harness.EFFORT["high"]["hint"] in self.model.calls[2]["messages"][0]["content"]), ("low", False))
+        self.assertEqual(self.api("GET", f"/api/sessions/{sid}", cookie=self.alice)[1]["effort"], "low")
+        other = self.new_chat("a different chat")  # another chat is not affected
+        self.assertEqual(self.api("GET", f"/api/sessions/{other}", cookie=self.alice)[1]["effort"], "medium")
+        self.assertEqual(self.api("PATCH", f"/api/sessions/{other}", {"effort": "high"}, self.alice)[1]["effort"], "high")
+        status, raw, _ = self.http("POST", "/api/chat", {"goal": "x", "effort": "extreme", "stream": False}, self.alice)
+        self.assertEqual((status, json.loads(raw)["kind"]), (400, "bad_request"))
+
+    def test_visitors_choose_a_level_too(self):
+        _, evs = self.stream("/api/chat", {"messages": [{"role": "user", "content": "hi"}], "effort": "low"})
+        call = self.model.calls[0]
+        self.assertEqual(call["effort"], "low")
+        self.assertIn(harness.EFFORT["low"]["hint"], call["messages"][0]["content"])
+        self.assertEqual(self.http("POST", "/api/chat", {"messages": [{"role": "user", "content": "hi"}], "effort": "bogus"})[0], 400)
+
+    def test_the_backend_request_carries_reasoning_effort_only_when_it_is_not_the_default(self):
+        sent = []
+
+        def fake_urlopen(req, timeout=None):
+            sent.append(json.loads(req.data))
+            return mock.MagicMock(__enter__=lambda s: [], __exit__=lambda *a: False)
+        with mock.patch.object(harness.urllib.request, "urlopen", fake_urlopen):
+            for level in ("low", "medium", "high", None, "nonsense"):
+                REAL_CHAT([{"role": "user", "content": "x"}], lambda e: None, [], None, level)
+        self.assertEqual([b.get("reasoning_effort") for b in sent], ["low", None, "high", None, None])
+
+    def test_effort_table_rows_are_complete(self):
+        self.assertIn(harness.DEFAULT_EFFORT, harness.EFFORT)
+        self.assertEqual(harness.EFFORT[harness.DEFAULT_EFFORT]["hint"], "")  # the default changes nothing about the prompt
+        for level, row in harness.EFFORT.items():
+            self.assertTrue(row["label"] and row["desc"], level)
+        self.assertEqual(harness.system_text(None, "high"), settings.get("system_prompt") + " " + harness.EFFORT["high"]["hint"])
 
 
 if __name__ == "__main__":

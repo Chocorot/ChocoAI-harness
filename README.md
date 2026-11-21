@@ -119,6 +119,8 @@ Watchtower only updates images: a changed compose file or `searxng/settings.yml`
 Named volumes `harness-data` / `harness-ws` survive updates. Roll back by pinning the compose image to a
 `sha-<commit>` tag.
 
+Chat titles, renaming and per-chat thinking effort: [docs/chats.md](docs/chats.md).
+
 ## Agent mode and internet
 
 Signed-in users and admin get `web_fetch`, `web_search`, `update_plan` and `delegate` on top of the file tools: the model plans, looks, thinks and

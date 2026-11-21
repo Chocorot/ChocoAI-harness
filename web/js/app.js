@@ -1,6 +1,6 @@
 // ChocoAI harness UI controller: routing, public vs signed-in chat, sheets, sign-in, theme, install. No framework, no build.
 // What the page offers comes from GET /api/me (capabilities), never from names in this file. See docs/pwa-and-ui-design.md.
-import { icon } from "./icons.js";
+import { icon, effortIcon } from "./icons.js";
 import { esc } from "./md.js";
 import { readEvents } from "./sse.js";
 import { Turn, el } from "./turn.js";
@@ -9,8 +9,8 @@ import { enter, shake, sheetIn, sheetOut, stagger } from "./anim.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const app = $("#app"), col = $("#col"), msgs = $("#msgs"), input = $("#input"), sendBtn = $("#send"), jump = $("#jump");
-const S = { me: null, sessions: [], sid: null, busy: false, polling: false, ctl: null, turn: null, poll: null, history: [], stick: true, install: null, atts: [], side: true };
-const HKEY = "choco.public.chat.v1", TKEY = "choco-harness-theme", SKEY = "choco-harness-sidebar";
+const S = { me: null, sessions: [], sid: null, busy: false, polling: false, ctl: null, turn: null, poll: null, history: [], stick: true, install: null, atts: [], side: true, effort: "medium", renaming: false };
+const HKEY = "choco.public.chat.v1", TKEY = "choco-harness-theme", SKEY = "choco-harness-sidebar", EKEY = "choco.public.effort";
 const coarse = () => matchMedia("(pointer: coarse)").matches;
 const desktop = () => matchMedia("(min-width: 768px)").matches;
 const user = () => S.me?.capabilities.history === "user";
@@ -150,15 +150,15 @@ async function regenerate() {
 }
 async function run(text, isRetry, atts = []) {
   setBusy(true);
-  const turn = newTurn();
+  const turn = newTurn(), isNew = user() && !S.sid;
   const ctl = (S.ctl = new AbortController());
   let finished = false, failure = null, lost = false;
   try {
     let body;
-    if (user()) body = isRetry ? { session: S.sid, retry: true } : { goal: text, session: S.sid || undefined, attachments: atts.length ? atts.map(({ name, data }) => ({ name, data })) : undefined };
+    if (user()) body = isRetry ? { session: S.sid, retry: true, effort: S.effort } : { goal: text, session: S.sid || undefined, effort: S.effort, attachments: atts.length ? atts.map(({ name, data }) => ({ name, data })) : undefined };
     else { // a failed attempt is retried without its failure note; the page's history is the whole conversation
       while (S.history.length && S.history[S.history.length - 1].hidden) S.history.pop();
-      body = { messages: S.history.map(({ role, content }) => ({ role, content })) };
+      body = { messages: S.history.map(({ role, content }) => ({ role, content })), effort: S.effort };
     }
     const res = await fetch("/api/chat", { method: "POST", credentials: "same-origin", signal: ctl.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!res.ok) {
@@ -184,11 +184,11 @@ async function run(text, isRetry, atts = []) {
       S.polling = true; turn.setStatus("Connection lost. The assistant is still working, reconnecting…", "refresh", false); startPoll(S.sid);
     } else {
       if (lost) turn.error({ kind: "upstream_down", msg: "The connection was lost before the reply finished.", retryable: true });
-      finishRun(turn, finished, failure, ctl.signal.aborted);
+      finishRun(turn, finished, failure, ctl.signal.aborted, isNew);
     }
   }
 }
-function finishRun(turn, finished, failure, aborted) {
+function finishRun(turn, finished, failure, aborted, isNew) {
   turn.end();
   if (!user()) { // public: the page owns the history
     const answer = turn.answerText();
@@ -198,7 +198,7 @@ function finishRun(turn, finished, failure, aborted) {
   } else if (aborted && S.sid) { S.polling = true; startPoll(S.sid); return; }
   if (finished && turn.answerText()) addActions(turn);
   setBusy(false); S.ctl = null;
-  if (user()) refreshSessions();
+  if (user()) { refreshSessions(); if (isNew && finished && S.sid) watchTitle(S.sid); }
 }
 function onSession(id, text) {
   if (S.sid === id) return;
@@ -258,6 +258,99 @@ function setupAttach() {
   if (!on) { S.atts = []; renderAtts(); }
 }
 
+// ---- popover menu (used by chat options and the effort picker) -------------------------------------------------------------
+let menu = null;
+function closeMenu() {
+  if (!menu) return;
+  menu.el.remove(); menu.anchor.setAttribute("aria-expanded", "false");
+  document.removeEventListener("pointerdown", menu.away, true); removeEventListener("resize", closeMenu);
+  menu = null;
+}
+// items: [{label, desc?, icon?, checked?, danger?, confirm?, run}]. `confirm` makes the item need a second tap (no native dialogs).
+function openMenu(anchor, items, { above = false } = {}) {
+  closeMenu();
+  const m = el("div", "menu"); m.setAttribute("role", "menu");
+  for (const it of items) {
+    const b = el("button", "menu-i" + (it.danger ? " danger" : ""), `${it.icon ? icon(it.icon, 18) : ""}<span class="mt"><b></b>${it.desc ? `<small>${esc(it.desc)}</small>` : ""}</span>${it.checked ? icon("check", 16, "ck") : ""}`);
+    $("b", b).textContent = it.label; b.type = "button";
+    b.setAttribute("role", it.checked === undefined ? "menuitem" : "menuitemradio");
+    if (it.checked !== undefined) b.setAttribute("aria-checked", String(!!it.checked));
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (it.confirm && !b.classList.contains("armed")) { b.classList.add("armed"); $("b", b).textContent = it.confirm; return; }
+      closeMenu(); setTimeout(it.run, 0);
+    });
+    m.append(b);
+  }
+  document.body.append(m);
+  const r = anchor.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  const left = Math.min(Math.max(8, r.right - w), innerWidth - w - 8);
+  let top = above || r.bottom + h + 8 > innerHeight ? r.top - h - 6 : r.bottom + 6;
+  top = Math.max(8, top);
+  m.style.left = left + "px"; m.style.top = top + "px";
+  anchor.setAttribute("aria-expanded", "true");
+  const away = (e) => { if (!m.contains(e.target) && !anchor.contains(e.target)) closeMenu(); };
+  menu = { el: m, anchor, away };
+  setTimeout(() => document.addEventListener("pointerdown", away, true), 0);
+  addEventListener("resize", closeMenu);
+  enter(m, { y: above ? 4 : -4 });
+  $(".menu-i", m)?.focus({ preventScroll: true });
+}
+
+// ---- thinking effort, per chat -----------------------------------------------------------------------------------------
+const levels = () => S.me?.capabilities.effort?.levels || [];
+function syncEffort() {
+  const lv = levels(), b = $("#effort");
+  b.hidden = !lv.length;
+  if (!lv.length) return;
+  if (!lv.some((l) => l.id === S.effort)) S.effort = S.me.capabilities.effort.default;
+  const i = lv.findIndex((l) => l.id === S.effort);
+  b.innerHTML = effortIcon(i, lv.length);
+  b.setAttribute("aria-label", `Thinking effort: ${lv[i].label}`); b.title = `Thinking effort: ${lv[i].label}`;
+}
+async function setEffort(id) {
+  S.effort = id; syncEffort();
+  if (user()) { if (S.sid) api("PATCH", `/api/sessions/${S.sid}`, { effort: id }).catch((e) => toast(e.message)); } // a new chat sends it with its first message
+  else store.set(EKEY, id);
+}
+function effortMenu() {
+  openMenu($("#effort"), levels().map((l) => ({ label: l.label, desc: l.desc, checked: l.id === S.effort, run: () => setEffort(l.id) })), { above: true });
+}
+
+// ---- renaming and the automatic title ----------------------------------------------------------------------------------
+function startRename(row, s) {
+  S.renaming = true;
+  $(".open", row).hidden = true; $(".more", row).hidden = true;
+  const wrap = el("div", "edit"), input = el("input", "rename");
+  input.value = chatTitle(s); input.maxLength = 80; input.setAttribute("aria-label", "Chat name"); input.enterKeyHint = "done";
+  wrap.append(input); row.append(wrap); row.classList.add("editing");
+  input.focus(); input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const v = input.value.trim();
+    if (save && v && v !== chatTitle(s)) {
+      try { const r = await api("PATCH", `/api/sessions/${s.id}`, { title: v }); s.title = r.title; s.titleState = 2; if (S.sid === s.id) $("#title").textContent = r.title; }
+      catch (e) { toast(e.message); }
+    }
+    S.renaming = false; renderLists();
+  };
+  input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } });
+  input.addEventListener("blur", () => finish(true));
+}
+// the model writes a better title a few seconds after the first answer: look for it a few times, then stop
+function watchTitle(sid) {
+  let tries = 0;
+  const tick = async () => {
+    if (++tries > 6 || !user()) return;
+    await refreshSessions();
+    const s = S.sessions.find((x) => x.id === sid);
+    if (s && S.sid === sid) $("#title").textContent = chatTitle(s);
+    if (!s || s.titleState === 0) setTimeout(tick, tries < 3 ? 4000 : 10000);
+  };
+  setTimeout(tick, 3000);
+}
+
 // ---- saved chats -----------------------------------------------------------------------------------------------------
 const planSteps = (raw) => (Array.isArray(raw) ? raw : []).map((x) => (typeof x === "string" ? { text: x, status: "todo" } : { text: String(x?.text || ""), status: ["todo", "doing", "done"].includes(x?.status) ? x.status : "todo" })).filter((s) => s.text.trim()).slice(0, 20);
 const NOTE = /^\[run failed: [^\]]*\]\s*/;
@@ -289,8 +382,8 @@ async function openSession(id) {
   let d;
   try { d = await api("GET", `/api/sessions/${id}`); } catch { toast("That chat no longer exists."); S.sid = null; location.hash = "#/"; return; }
   clearMsgs(); replay(d.messages);
-  const s = S.sessions.find((x) => x.id === id);
-  $("#title").textContent = s ? chatTitle(s) : "Chat";
+  S.effort = d.effort; syncEffort();
+  $("#title").textContent = d.title || "Chat";
   markActive();
   if (d.running) { S.turn?.setStatus("The assistant is still working…", "sparkle", true); startPoll(id); }
   requestAnimationFrame(() => scrollBottom(true));
@@ -300,27 +393,34 @@ function newChat() {
   if (!user()) S.history.length ? replay(S.history.filter((m) => !m.hidden)) : showEmpty();
   else showEmpty();
   $("#title").textContent = user() ? "New chat" : "ChocoAI";
+  S.effort = user() ? S.me.capabilities.effort?.default || "medium" : store.get(EKEY) || S.me.capabilities.effort?.default || "medium"; syncEffort();
   markActive();
 }
-const chatTitle = (s) => (s.goal || "Chat").split("\n")[0].slice(0, 60);
+const chatTitle = (s) => (s.title || s.goal || "Chat").split("\n")[0].slice(0, 80);
 const when = (t) => new Date(t * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 async function refreshSessions() {
   if (!user()) return;
   try { S.sessions = (await api("GET", "/api/sessions")).sessions; } catch { /* keep the old list */ }
   renderLists();
 }
-function renderLists() { document.querySelectorAll("[data-chatlist]").forEach(fillList); }
+function renderLists() { if (!S.renaming) document.querySelectorAll("[data-chatlist]").forEach(fillList); } // not while a name is being typed
 function fillList(root) {
   root.innerHTML = S.sessions.length ? "" : `<div class="list-empty">No chats yet.<br>Start one below.</div>`;
   for (const s of S.sessions) {
-    const row = el("div", "row", `<button class="open" type="button"><span class="t"></span><small>${esc(when(s.created))}</small></button><button class="del" type="button" aria-label="Delete chat">${icon("trash", 18)}</button>`);
+    const row = el("div", "row", `<button class="open" type="button"><span class="t"></span><small>${esc(when(s.created))}</small></button><button class="more" type="button" aria-label="Chat options" aria-haspopup="menu" aria-expanded="false">${icon("more", 18)}</button>`);
     row.dataset.id = s.id; row.dataset.on = String(s.id === S.sid);
-    row.querySelector(".t").textContent = chatTitle(s);
-    row.querySelector(".open").addEventListener("click", () => { closeSheet(); location.hash = `#/c/${s.id}`; });
-    twoStep(row.querySelector(".del"), "Delete?", async () => {
-      try { await api("DELETE", `/api/sessions/${s.id}`); } catch { return toast("Could not delete that chat."); }
-      S.sessions = S.sessions.filter((x) => x.id !== s.id); renderLists();
-      if (S.sid === s.id) location.hash = "#/";
+    $(".t", row).textContent = chatTitle(s);
+    $(".open", row).addEventListener("click", () => { closeSheet(); location.hash = `#/c/${s.id}`; });
+    $(".more", row).addEventListener("click", (e) => {
+      e.stopPropagation();
+      openMenu(e.currentTarget, [
+        { label: "Rename", icon: "pencil", run: () => startRename(row, s) },
+        { label: "Delete", icon: "trash", danger: true, confirm: "Tap again to delete", run: async () => {
+          try { await api("DELETE", `/api/sessions/${s.id}`); } catch { return toast("Could not delete that chat."); }
+          S.sessions = S.sessions.filter((x) => x.id !== s.id); renderLists();
+          if (S.sid === s.id) location.hash = "#/";
+        } },
+      ]);
     });
     root.append(row);
   }
@@ -362,7 +462,7 @@ function dragToClose(panel, close) {
   };
   [handle, head.parentElement].forEach((h) => { h.style.touchAction = "none"; h.addEventListener("pointerdown", down); h.addEventListener("pointermove", move); h.addEventListener("pointerup", up); h.addEventListener("pointercancel", up); });
 }
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && sheet) closeSheet(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if (menu) closeMenu(); else if (sheet) closeSheet(); } });
 
 function chatsSheet() {
   openSheet("Chats", (b) => {
@@ -523,6 +623,7 @@ function applyMode() {
   app.dataset.store = u ? "user" : "client";
   S.side = store.get(SKEY) !== "0";
   setupAttach();
+  S.effort = u ? S.me.capabilities.effort?.default || "medium" : store.get(EKEY) || S.me.capabilities.effort?.default || "medium"; syncEffort();
   $("#btn-account").innerHTML = S.me.address ? `<span class="avatar" style="width:30px;height:30px;font-size:.85rem">${esc(S.me.address[0])}</span>` : icon("user", 22);
   $("#fine").textContent = u ? "Saved to your account. The assistant can make mistakes." : "Your chat stays on this device. The assistant can make mistakes.";
   const side = $("#side");
@@ -553,6 +654,7 @@ function wire() {
   matchMedia("(min-width: 768px)").addEventListener("change", syncChrome);
   jump.innerHTML = `${icon("arrowdown", 16)} Latest`;
   $("#attach").innerHTML = icon("paperclip", 22);
+  $("#effort").addEventListener("click", effortMenu);
   $("#attach").addEventListener("click", () => $("#file").click());
   $("#file").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
   input.addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length && !$("#attach").hidden) { e.preventDefault(); addFiles(fs); } });

@@ -32,9 +32,10 @@ A new tier = a new row. Tools are limited twice: the schemas sent to the model, 
 ## Endpoints
 | | |
 |---|---|
-| `GET /api/me` | `{mode, address, capabilities:{login, tools[], shell, history, automations, timezone, attachments:{image, documents[]}}}`: the page builds itself from this |
+| `GET /api/me` | `{mode, address, capabilities:{login, tools[], shell, history, effort:{default, levels[]}, automations, timezone, attachments:{image, documents[]}}}`: the page builds itself from this |
 | `POST /api/login`, `POST /api/logout` | see above |
-| `POST /api/chat` | public: `{"messages":[{role,content}...]}`; signed in: `{"goal","session","retry","attachments"}` (attachments.md). Streams by default |
+| `POST /api/chat` | public: `{"messages":[{role,content}...]}`; signed in: `{"goal","session","retry","attachments","effort"}` (attachments.md, chats.md). Streams by default |
+| `PATCH /api/sessions/<id>` | rename (`title`) and/or set thinking `effort` (chats.md) |
 | `GET /api/sessions`, `GET /api/sessions/<id>`, `GET /api/sessions/<id>/uploads/<name>`, `DELETE /api/sessions/<id>` | the caller's own chats (401 for visitors) |
 | `GET/POST/PATCH/DELETE /api/automations[/<id>[/run]]` | the caller's scheduled prompts (automations.md) |
 | `POST /task` | admin only, needs `HARNESS_TOKEN`; **no token set = the endpoint does not exist (404)** |

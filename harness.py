@@ -26,13 +26,23 @@ import runq
 import settings
 import tools
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
 MAX_BODY = 1_000_000  # bytes accepted on a request
 DRAIN = 20_000_000  # most of a refused body we read before answering
 AUTO_PATH = r"/api/automations(?:/(\d+)(/run)?)?"
 ATTACH_BODY = 9_000_000  # signed-in chat requests may carry attachments (base64: up to ~6 MB of files)
 BULKY = {"read_file", "web_fetch", "web_search"}  # results old enough to be re-fetched are replaced by a stub when compacting
+# Thinking effort, chosen per chat. `param` is sent to the backend as `reasoning_effort` (None = backend default); `hint` is a sentence
+# added to the system prompt, which works even on models that ignore the parameter. Whether a model honours either is up to the model.
+EFFORT = {
+    "low": {"label": "Low", "desc": "Quick answers, little reasoning", "param": "low",
+            "hint": "Reasoning effort: low. Answer directly and briefly; do not deliberate at length."},
+    "medium": {"label": "Medium", "desc": "Balanced (default)", "param": None, "hint": ""},
+    "high": {"label": "High", "desc": "Thinks longer, checks its work", "param": "high",
+             "hint": "Reasoning effort: high. Think the problem through carefully and check your work before answering."},
+}
+DEFAULT_EFFORT = "medium"
 HELPER_PROMPT = (" You are a helper working on one subtask for another agent. Do only that task, then finish with a short "
                  "summary (under 150 words) of what you found or did.")
 
@@ -126,7 +136,7 @@ def parse_sse(lines, emit=cli_emit):
     return msg, usage
 
 
-def chat(messages, emit=cli_emit, schemas=None, max_tokens=None):
+def chat(messages, emit=cli_emit, schemas=None, max_tokens=None, effort=None):
     """One streamed model call. `schemas` = the tools this caller may use (None = all; empty = none, key omitted)."""
     schemas = tools.SCHEMAS if schemas is None else schemas
     body = {"model": settings.get("model"), "messages": messages,
@@ -136,6 +146,8 @@ def chat(messages, emit=cli_emit, schemas=None, max_tokens=None):
     for k in ("temperature", "max_tokens"):  # optional: only sent when set
         if settings.get(k) is not None:
             body[k] = settings.get(k)
+    if EFFORT.get(effort, {}).get("param"):
+        body["reasoning_effort"] = EFFORT[effort]["param"]
     if max_tokens:  # a caller-specific cap (public visitors) wins over the saved value
         body["max_tokens"] = min(max_tokens, body.get("max_tokens", max_tokens))
     req = urllib.request.Request(
@@ -334,7 +346,7 @@ def agent_loop(run, messages, max_turns):
     return stop(f"max_turns={max_turns} reached", f"Stopped after {max_turns} steps. Say 'continue' to go on.")
 
 
-def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit, allow=None):
+def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit, allow=None, effort=None):
     """One run of a session. Returns the final text.
     `allow`: tool names this caller may use (None = all). Enforced in the schemas sent AND when a call comes back.
     Any failure is saved into the session as a note (so the model's next turn knows) and raised as a HarnessError."""
@@ -343,7 +355,7 @@ def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=Non
         if chat_fn:  # when called so tests can patch it, and a custom chat_fn (tests) serves helpers too
             return chat_fn
         schemas = None if names is None else tools.schemas_for(names)
-        return lambda m, e: chat(m, e, schemas)
+        return lambda m, e: chat(m, e, schemas, None, effort)
 
     run = Run(DbStore(conn, sid), ws, auto_approve, emit, allow, chat_for(allow), time.time() + settings.get("max_seconds"), 0, chat_for)
     try:
@@ -357,11 +369,12 @@ def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=Non
         raise err from e
 
 
-def run_public(history, emit, chat_fn=None):
+def run_public(history, emit, chat_fn=None, effort=None):
     """Stateless chat for visitors: nothing is stored here, the page keeps the history. No tools. A failure is raised
     as a HarnessError whose `note()` the page keeps in its history, like the saved note of a signed-in session."""
-    chat_fn = chat_fn or (lambda m, e: chat(m, e, [], settings.get("public_max_tokens")))
-    msg, _, _ = call_model([{"role": "system", "content": settings.get("public_prompt")}, *history], emit, chat_fn)
+    chat_fn = chat_fn or (lambda m, e: chat(m, e, [], settings.get("public_max_tokens"), effort))
+    system = " ".join(x for x in (settings.get("public_prompt"), EFFORT.get(effort, {}).get("hint", "")) if x)
+    msg, _, _ = call_model([{"role": "system", "content": system}, *history], emit, chat_fn)
     return msg["content"] or ""
 
 
@@ -376,14 +389,35 @@ def trim_history(history, max_chars):
     return kept, len(history) - len(kept)
 
 
-def system_text(allow=None):
-    """The saved system prompt plus one hint per tool this caller may use (allow=None: just the saved prompt)."""
-    return " ".join(x for x in (settings.get("system_prompt"), tools.prompts_for(allow) if allow is not None else "") if x)
+def system_text(allow=None, effort=None):
+    """The saved system prompt, one hint per tool this caller may use (allow=None: none), and the chat's effort hint."""
+    return " ".join(x for x in (settings.get("system_prompt"), tools.prompts_for(allow) if allow is not None else "",
+                                EFFORT.get(effort, {}).get("hint", "")) if x)
 
 
-def start(conn, goal, session, retry=False, allow=None, content=None, title=None):
+def short_title(text, limit=48):
+    """An instant chat title from the first message: first line, markdown and links reduced, cut at a word."""
+    lines = [x.strip() for x in (text or "").splitlines() if x.strip()]
+    t = re.sub(r"https?://([^\s/]+)\S*", r"\1", lines[0]) if lines else ""
+    t = re.sub(r"\s+", " ", re.sub(r"[#*_`>~|\[\]]+", "", t)).strip()
+    if len(t) > limit:
+        t = (t[:limit].rsplit(" ", 1)[0] if " " in t[:limit] else t[:limit]).rstrip(",.;:-") + "\u2026"
+    return t or "New chat"
+
+
+def clean_title(text, limit=60):
+    """A model's title reply reduced to a plain title, or "" when it is unusable."""
+    first = next((x for x in (text or "").splitlines() if x.strip()), "")
+    t = re.sub(r"^\s*(title|chat title)\s*[:\-]\s*", "", first, flags=re.I)
+    t = re.sub(r"\s+", " ", re.sub(r"[#*_`>~|\[\]\"\u201c\u201d]+", "", t)).strip().rstrip(".")
+    return t[:limit].rstrip() if len(t) >= 2 else ""
+
+
+def start(conn, goal, session, retry=False, allow=None, content=None, title=None, effort=None):
     """Create or resume a session, add the goal as a user message. Returns (sid, messages).
-    `retry` removes the failure note of the last run so the model simply continues where it stopped."""
+    `retry` removes the failure note of the last run so the model simply continues where it stopped.
+    `title` names the chat for good (jobs); otherwise it starts as short_title(goal) and the model may improve it later.
+    `effort` is this chat's thinking level; None keeps the chat's saved one (new chats: medium)."""
     if session:
         if not db.session_exists(conn, session):
             raise errors.HarnessError("not_found", f"no such session: {session}")
@@ -393,11 +427,16 @@ def start(conn, goal, session, retry=False, allow=None, content=None, title=None
             messages.pop()
             db.drop_last(conn, sid)
         repair_tail(conn, sid, messages)
+        stored = db.get_session(conn, sid)["effort"]
+        effort = effort or stored or DEFAULT_EFFORT
+        if effort != stored:
+            db.set_effort(conn, sid, effort)
         if messages and messages[0]["role"] == "system":  # a saved prompt edit applies to resumed sessions too
-            messages[0] = {"role": "system", "content": system_text(allow)}
+            messages[0] = {"role": "system", "content": system_text(allow, effort)}
     else:
-        sid = db.new_session(conn, title or goal)
-        messages = [{"role": "system", "content": system_text(allow)}]
+        effort = effort or DEFAULT_EFFORT
+        sid = db.new_session(conn, goal, title or short_title(goal), 2 if title else 0, effort)
+        messages = [{"role": "system", "content": system_text(allow, effort)}]
         db.save_msg(conn, sid, messages[0])
     if goal:
         messages.append({"role": "user", "content": content if content is not None else goal})
@@ -492,6 +531,38 @@ def make_server(host, port, ws, max_turns, scheduler=False):
             return "ok", sid
         except errors.HarnessError as e:
             return f"{e.kind}: {e.message}", sid
+        finally:
+            conn.close()
+
+    def plain(m):
+        c = m.get("content")
+        return "".join(p.get("text", "") for p in c if isinstance(p, dict)) if isinstance(c, list) else (c or "")
+
+    def smart_title(addr, sid):
+        """Ask the model for a short title after the first answer of a new chat. Queued behind live chats; a title is a nicety,
+        so any failure just leaves the automatic one."""
+        if not settings.get("smart_titles"):
+            return
+        conn = db.connect(auth.db_path(addr))
+        try:
+            info = db.get_session(conn, sid)
+            if not info or info["titleState"] != 0:
+                return
+            msgs = [m for m in db.load(conn, sid) if m["role"] in ("user", "assistant") and not plain(m).startswith(errors.NOTE_PREFIX)]
+            first_user = next((plain(m) for m in msgs if m["role"] == "user"), "")
+            first_ai = next((plain(m) for m in msgs if m["role"] == "assistant" and plain(m).strip()), "")
+            if not first_user or not first_ai:
+                return
+            ask = [{"role": "system", "content": "You write very short titles for chat conversations."},
+                   {"role": "user", "content": "Write a title of at most 6 words for this conversation. Reply with only the title: "
+                    f"no quotes, no full stop.\n\nUser: {first_user[:400]}\nAssistant: {first_ai[:400]}"}]
+            with queue.slot(prio=auth.MODES["user"]["prio"] + 0.5, limit=2):
+                msg, _ = chat(ask, lambda ev: None, [], 60, "low")
+            title = clean_title(msg.get("content") or "")
+            if title and title.lower() != info["title"].lower():
+                db.rename(conn, sid, title, 1)
+        except Exception:
+            pass
         finally:
             conn.close()
 
@@ -689,7 +760,36 @@ def make_server(host, port, ws, max_turns, scheduler=False):
             raise errors.HarnessError("not_found")
 
         def do_PATCH(self):
-            self._guard(lambda rid: self._automations("PATCH", urllib.parse.urlparse(self.path).path))
+            def route(rid):
+                path = urllib.parse.urlparse(self.path).path
+                m = re.fullmatch(r"/api/sessions/(\d+)", path)
+                return self._session_patch(int(m.group(1))) if m else self._automations("PATCH", path)
+            self._guard(route)
+
+        def _session_patch(self, sid):
+            """Rename a chat and/or set its thinking effort. A name typed here is never replaced by an automatic one."""
+            self._same_origin()
+            addr, req = self._need_user(), self._json_body()
+            title, effort = req.get("title"), req.get("effort")
+            if title is None and effort is None:
+                raise errors.HarnessError("bad_request", "Nothing to change.")
+            if title is not None:
+                title = " ".join(title.split()) if isinstance(title, str) else ""
+                if not 1 <= len(title) <= 80:
+                    raise errors.HarnessError("bad_request", "A title needs 1 to 80 characters.")
+            if effort is not None and effort not in EFFORT:
+                raise errors.HarnessError("bad_request", "effort must be one of: " + ", ".join(EFFORT))
+
+            def work(conn):
+                if not db.session_exists(conn, sid):
+                    raise errors.HarnessError("not_found")
+                if title is not None:
+                    db.rename(conn, sid, title, 2)
+                if effort is not None:
+                    db.set_effort(conn, sid, effort)
+                return {"id": sid, **db.get_session(conn, sid)}
+
+            self._send(200, self._with_user_db(work))
 
         def _delete(self, rid):
             path = urllib.parse.urlparse(self.path).path
@@ -747,7 +847,8 @@ def make_server(host, port, ws, max_turns, scheduler=False):
             rule = auth.MODES[mode]
             self._send(200, {"mode": mode, "address": addr, "capabilities": {
                 "login": auth.enabled(), "tools": rule["tools"], "shell": "run_bash" in rule["tools"],
-                "history": rule["store"], "automations": rule["store"] == "user" and settings.get("max_automations") > 0,
+                "history": rule["store"], "effort": {"default": DEFAULT_EFFORT, "levels": [{"id": k, "label": v["label"], "desc": v["desc"]} for k, v in EFFORT.items()]},
+                "automations": rule["store"] == "user" and settings.get("max_automations") > 0,
                 "timezone": os.environ.get("HARNESS_TZ") or "UTC",
                 "attachments": {"image": rule["store"] == "user" and settings.get("vision"),
                                 "documents": sorted(attach.READERS) if rule["store"] == "user" else []}}})
@@ -786,7 +887,10 @@ def make_server(host, port, ws, max_turns, scheduler=False):
                         for m in db.load(conn, sid) if m["role"] != "system"]
 
             addr = self._need_user()
-            self._send(200, {"id": sid, "running": (addr, sid) in active, "messages": self._with_user_db(load)})
+            messages = self._with_user_db(load)  # raises not_found first for a chat that isn't there
+            info = self._with_user_db(lambda conn: db.get_session(conn, sid))
+            self._send(200, {"id": sid, "running": (addr, sid) in active, "title": info["title"], "effort": info["effort"] or DEFAULT_EFFORT,
+                             "messages": messages})
 
         def _upload_get(self, sid, name):
             """A file the owner attached to one of their own chats (photo thumbnails in the page, document downloads)."""
@@ -847,6 +951,9 @@ def make_server(host, port, ws, max_turns, scheduler=False):
             """A session run for a caller with storage: admin (the original DB) or a signed-in user (their own DB)."""
             rule = auth.MODES[mode]
             goal, session, retry = req.get("goal"), req.get("session"), bool(req.get("retry"))
+            effort = req.get("effort")
+            if effort is not None and effort not in EFFORT:
+                raise errors.HarnessError("bad_request", "effort must be one of: " + ", ".join(EFFORT))
             atts = req.get("attachments")
             if atts and not addr:
                 raise errors.HarnessError("bad_request", "Attachments need a signed-in account.")
@@ -868,18 +975,20 @@ def make_server(host, port, ws, max_turns, scheduler=False):
                 finally:
                     conn.close()
             emit, stop = self._begin(stream)
+            sid = reply = None
             try:
                 with queue.slot(prio=rule["prio"], on_wait=self._on_wait(emit), tick=KEEPALIVE):
                     conn = db.connect(path)
                     try:
-                        sid, messages = start(conn, goal, session, retry, rule["tools"], attach.content(goal or "", doc_text, images))
+                        sid, messages = start(conn, goal, session, retry, rule["tools"], attach.content(goal or "", doc_text, images), effort=effort)
                         self.sid = sid
                         emit({"t": "session", "id": sid})
                         run_ws = auth.session_ws(ws, addr, sid) if addr else ws
                         attach.save(run_ws, images + saves)
                         active.add((addr, sid))
                         try:
-                            reply = run_agent(conn, sid, messages, run_ws, True, max_turns, emit=emit, allow=rule["tools"])
+                            reply = run_agent(conn, sid, messages, run_ws, True, max_turns, emit=emit, allow=rule["tools"],
+                                              effort=db.get_session(conn, sid)["effort"])
                         finally:
                             active.discard((addr, sid))
                         if self.sse:
@@ -888,6 +997,8 @@ def make_server(host, port, ws, max_turns, scheduler=False):
                             self._send(200, {"session": sid, "reply": reply})
                     finally:
                         conn.close()
+                if addr and not session and reply and not reply.startswith("[stopped"):  # first answer of a new chat: name it
+                    threading.Thread(target=smart_title, args=(addr, sid), daemon=True).start()
             finally:
                 if stop:
                     stop.set()
@@ -905,6 +1016,9 @@ def make_server(host, port, ws, max_turns, scheduler=False):
                 clean.append({"role": m["role"], "content": m["content"]})
             if clean[-1]["role"] != "user":
                 raise errors.HarnessError("bad_request", "The last message must come from the user.")
+            effort = req.get("effort")
+            if effort is not None and effort not in EFFORT:
+                raise errors.HarnessError("bad_request", "effort must be one of: " + ", ".join(EFFORT))
             if len(clean[-1]["content"]) > cap:
                 raise errors.HarnessError("bad_request", "That message is too long.")
             if not public_hits.allow(self._ip(), settings.get("public_rpm"), 60):
@@ -916,7 +1030,7 @@ def make_server(host, port, ws, max_turns, scheduler=False):
                     emit({"t": "trimmed", "dropped": dropped})
                 with queue.slot(prio=auth.MODES["public"]["prio"], on_wait=self._on_wait(emit), tick=KEEPALIVE,
                                 limit=settings.get("max_queue_public")):
-                    run_public(kept, emit)
+                    run_public(kept, emit, effort=effort)
                     emit({"t": "done"})
             finally:
                 stop.set()
