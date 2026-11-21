@@ -40,7 +40,7 @@ export async function ssoCallback(req: Request): Promise<Response> {
     const user = await completeLogin(cfg, { code: q.get('code')!, flow })
     if (!isAllowed(user.email, settings.get('allowed_users'))) return back('denied')
     // The session keeps the roles the SSO gave this app; the mode (user or shell) is derived from them on every request.
-    const cookie = `${SESSION_COOKIE}=${await sealSession(newSession(user.email, user.roles))}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; SameSite=Lax${secure()}`
+    const cookie = `${SESSION_COOKIE}=${await sealSession(newSession(user.email, user.roles, Date.now(), { sid: user.sid ?? undefined, sub: user.sub, idToken: user.idToken }))}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; SameSite=Lax${secure()}`
     return redirect(`${origin}${flow.next}`, [clearFlow, cookie])
   } catch (err) {
     console.warn('[sso] sign-in refused:', err instanceof Error ? err.message : err)

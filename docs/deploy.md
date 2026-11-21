@@ -34,6 +34,9 @@ Compose already sets `SEARCH_URL`, `HARNESS_TRUST_PROXY=1` (the port is publishe
 
 Who may sign in is not an env var: it is the setting `allowed_users`, edited in the status dashboard (auth-and-modes.md).
 
+## What to register in the SSO for this app
+`create-client ai ChocoAI https://ai.chocorot.net/api/auth/sso/callback https://ai.chocorot.net/ https://ai.chocorot.net/api/auth/sso/backchannel-logout user,shell` (redirect URI, post-logout URI, back-channel logout URL, assignable roles). For an existing client: `set-backchannel ai <url>` and `set-client-roles ai user,shell`. Without the back-channel URL the app is simply not told about sign-outs elsewhere. The SSO must be able to reach the URL (the SSO runs on Vercel, the harness behind the Cloudflare tunnel).
+
 ## Order of go-live (needs Sir)
 1. The SSO is deployed and has the client `ai` (redirect URI above, roles `user`, `shell`); its secret goes into `.env`.
 2. Users get the role `user` for `ai` in the SSO (no role = "not allowed").

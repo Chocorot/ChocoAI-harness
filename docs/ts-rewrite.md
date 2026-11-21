@@ -21,7 +21,7 @@ The Python app (`harness.py` and friends, plain-JS page) was replaced in one go 
 5. Per-user isolation rules (paths only from the verified identity and an integer session id; a foreign or unknown id is the same 404).
 
 ## What changed (on purpose)
-- **Sign-in**: the SSO replaces the IMAP password check. Roles for client `ai`: `user`, `shell`. New env: `AUTH_SECRET`, `SSO_*`. Removed: `HARNESS_SESSION_KEY`, `HARNESS_SHELL_USERS`, `MAIL_HOST`, `MAIL_PORT`, `HARNESS_INSECURE_COOKIES`. Everyone signs in again (new cookie).
+- **Sign-in**: the SSO replaces the IMAP password check (and, since 2026-11-21, signing out here signs out of every Choco app and the SSO can end a sign-in here at once: back-channel logout, auth-and-modes.md). Roles for client `ai`: `user`, `shell`. New env: `AUTH_SECRET`, `SSO_*`. Removed: `HARNESS_SESSION_KEY`, `HARNESS_SHELL_USERS`, `MAIL_HOST`, `MAIL_PORT`, `HARNESS_INSECURE_COOKIES`. Everyone signs in again (new cookie).
 - **The shell** for signed-in users is off unless `HARNESS_SHELL=unconfined` (no sandbox was built). Its environment is scrubbed of server secrets; the Python shell inherited the whole server environment (tokens, keys). That leak is fixed, not carried over.
 - **CLI dropped**. Scripts use `POST /task` with the admin token.
 - **Memory**: `mem_limit` 512m (was 256m). A Next.js server measured about 100 MB RSS after a few requests, against about 35 MB for the Python one. The "< 20 MB, stdlib only" rules in the old AGENTS.md no longer apply.

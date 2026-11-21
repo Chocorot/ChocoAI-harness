@@ -14,9 +14,9 @@ import { HarnessError } from '../core/errors.ts'
 import * as model from '../core/model.ts'
 import * as settings from '../core/settings.ts'
 import { publicChat, runSession } from './chat.ts'
-import { ATTACH_BODY, bearerOk, guarded, json, MAX_BODY, needUser, readJson, sameOrigin, who } from './http.ts'
+import { ATTACH_BODY, bearerOk, guarded, json, MAX_BODY, needUser, readJson, sameOrigin, siteUrl, who } from './http.ts'
 import { manifest } from './manifest.ts'
-import { SESSION_COOKIE } from './session.ts'
+import { cookieValue, SESSION_COOKIE, unsealSession } from './session.ts'
 import { ssoConfig } from './sso.ts'
 import { activeKey, shared, workspace } from './state.ts'
 
@@ -59,7 +59,13 @@ export const logout = (req: Request) =>
   guarded(async () => {
     sameOrigin(req)
     const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
-    return json({ ok: true }, 200, { 'Set-Cookie': `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}` })
+    // Signing out here must sign out of every Choco app: after clearing our cookie the page goes to the SSO's logout, which ends the SSO
+    // session and tells the other apps (back-channel logout). `next` is null when there is nothing to go to (no SSO, an old session).
+    const s = await unsealSession(cookieValue(req.headers.get('cookie'), SESSION_COOKIE))
+    const cfg = ssoConfig()
+    const site = siteUrl(req)
+    const next = cfg && s?.idToken ? `${cfg.issuer}/logout?${new URLSearchParams({ id_token_hint: s.idToken, ...(site ? { post_logout_redirect_uri: `${site}/` } : {}) })}` : null
+    return json({ ok: true, next }, 200, { 'Set-Cookie': `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}` })
   })
 
 export const health = () => json({ ok: true })

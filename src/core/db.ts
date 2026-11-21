@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, ts REAL, session INTEGE
   tool TEXT, args TEXT, result TEXT);
 CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY, ts REAL, rid TEXT, session INTEGER,
   kind TEXT, code TEXT, message TEXT, detail TEXT);
+CREATE TABLE IF NOT EXISTS revocations(key TEXT PRIMARY KEY, at REAL, until REAL);
+CREATE TABLE IF NOT EXISTS seen_logout_jti(jti TEXT PRIMARY KEY, until REAL);
 CREATE TABLE IF NOT EXISTS automations(id INTEGER PRIMARY KEY, owner TEXT, name TEXT, prompt TEXT, schedule TEXT,
   enabled INTEGER DEFAULT 1, next_run REAL, last_run REAL, last_status TEXT, last_session INTEGER, created REAL);
 CREATE INDEX IF NOT EXISTS msg_session ON messages(session);
@@ -116,4 +118,27 @@ export function listSessions(db: Conn, limit = 50) {
     .raw()
     .all(limit) as Array<[number, string | null, number, string | null, number, string | null, number, number, number]>
   return rows.map((r) => ({ id: r[0], goal: (r[1] ?? '').slice(0, 200), created: r[2], title: (r[3] ?? '').slice(0, 200), titleState: r[4], effort: r[5], turns: r[6], tokens: r[7], toolCalls: r[8] }))
+}
+
+// ---- sign-ins the SSO ended (back-channel logout, src/server/backchannel.ts). Lives in the original harness.db. ----------------------
+/** Remember that `key` (`sid:<sid>` or `sub:<sub>`) was logged out. Rows are kept until a session that old would have expired anyway. */
+export function revoke(db: Conn, key: string, until: number, at = now()): void {
+  db.prepare('DELETE FROM revocations WHERE until < ?').run(now())
+  db.prepare('INSERT INTO revocations(key, at, until) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET at=MAX(at, excluded.at), until=MAX(until, excluded.until)').run(key, at, until)
+}
+
+/** True when this sign-in was ended: its sid was revoked, or its user was revoked after the session started. */
+export function isRevoked(db: Conn, s: { sid?: string; sub?: string; iat?: number }): boolean {
+  if (s.sid && db.prepare('SELECT 1 FROM revocations WHERE key=? AND until >= ?').get(`sid:${s.sid}`, now())) return true
+  if (s.sub) {
+    const r = db.prepare('SELECT at FROM revocations WHERE key=? AND until >= ?').get(`sub:${s.sub}`, now()) as { at: number } | undefined
+    if (r && (s.iat === undefined || s.iat <= r.at)) return true
+  }
+  return false
+}
+
+/** True when this logout token's jti was already used (a replay); otherwise records it. */
+export function seenLogoutJti(db: Conn, jti: string, until: number): boolean {
+  db.prepare('DELETE FROM seen_logout_jti WHERE until < ?').run(now())
+  return db.prepare('INSERT OR IGNORE INTO seen_logout_jti(jti, until) VALUES(?,?)').run(jti, until).changes === 0
 }

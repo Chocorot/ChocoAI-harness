@@ -441,7 +441,10 @@ export function App() {
         install={install}
         onReset={() => { r.history = []; saveHistory([]); setSheet(null); newChat(); toast('Chat reset.') }}
         onSignOut={async () => {
-          try { await api('POST', '/api/logout') } catch { /* the server clears the cookie; a failure here changes nothing for the user */ }
+          let next: string | null = null
+          try { next = (await api<{ next: string | null }>('POST', '/api/logout')).next } catch { /* the server clears the cookie; a failure here changes nothing for the user */ }
+          // the SSO signs this browser out of every Choco app (it tells them), then sends us back here
+          if (next) return void location.assign(next)
           setSheet(null); setSid(null); history.replaceState(null, '', '#/')
           await refreshMe(); newChat()
         }}

@@ -21,7 +21,9 @@ const fetchReturning = (id_token: string | undefined, status = 200) => (async ()
 const login = async (o: Over = {}) => { const { flow } = newFlow('/chat'); return completeLogin(cfg, { code: 'c', flow }, { fetch: fetchReturning(await idToken(flow.nonce, o)), keys }) }
 
 test('a good token gives the user with the role from the claim', async () => {
-  assert.deepEqual(await login(), { sub: 'user-1', email: 'alice@chocorot.net', name: 'Alice', role: 'user', roles: ['user'] })
+  const { idToken, ...user } = await login()
+  assert.deepEqual(user, { sub: 'user-1', email: 'alice@chocorot.net', name: 'Alice', role: 'user', roles: ['user'], sid: null })
+  assert.equal(idToken.split('.').length, 3) // kept for the sign-out redirect (id_token_hint)
   assert.equal((await login({ roles: ['shell'] })).role, 'shell')
   assert.equal((await login({ roles: ['user', 'shell'] })).role, 'shell')
 })

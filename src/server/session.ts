@@ -2,6 +2,8 @@
  * The signed-in session of the AI app: who (address), what the SSO says they may do (roles), when it ends.
  * A sealed (encrypted) cookie like status and mail use. Not remembered: 12 hours, so a role removed in the SSO
  * stops working within half a day. No password is ever held here (the SSO checked it).
+ * It also keeps the SSO's `sid` (the SSO session this sign-in came from) and `sub`, so the SSO can end it at once through
+ * back-channel logout (src/server/backchannel.ts), and the ID token, which the SSO needs as `id_token_hint` to sign out for real.
  */
 import { CompactEncrypt, compactDecrypt } from 'jose'
 import { isAddress } from '../core/auth.ts'
@@ -14,6 +16,13 @@ export interface Session {
   roles: string[]
   /** Unix seconds. Checked on every load: a cookie's maxAge is controlled by the client. */
   exp: number
+  /** Unix seconds this session started: a logout for a whole user (no sid) only ends sessions that started before it. */
+  iat?: number
+  /** The SSO session id from the ID token, and the SSO user id. */
+  sid?: string
+  sub?: string
+  /** The ID token, only used as `id_token_hint` when signing out. */
+  idToken?: string
 }
 
 /** 32 bytes from AUTH_SECRET (64 hex characters, or 32-byte base64). Required in production, no fallback. */
@@ -39,13 +48,14 @@ export async function unsealSession(token: string | undefined | null, now = Date
     const { plaintext } = await compactDecrypt(token, sessionKey())
     const s = JSON.parse(new TextDecoder().decode(plaintext)) as Session
     if (typeof s.exp !== 'number' || s.exp * 1000 < now || !isAddress(s.address) || !Array.isArray(s.roles)) return null
-    return { address: s.address, roles: s.roles.filter((r) => typeof r === 'string'), exp: s.exp }
+    const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined)
+    return { address: s.address, roles: s.roles.filter((r) => typeof r === 'string'), exp: s.exp, iat: typeof s.iat === 'number' ? s.iat : undefined, sid: str(s.sid), sub: str(s.sub), idToken: str(s.idToken) }
   } catch {
     return null // wrong key, tampered, garbage: all the same answer
   }
 }
 
-export const newSession = (address: string, roles: string[], now = Date.now()): Session => ({ address, roles, exp: Math.floor(now / 1000) + SESSION_SECONDS })
+export const newSession = (address: string, roles: string[], now = Date.now(), sso: Pick<Session, 'sid' | 'sub' | 'idToken'> = {}): Session => ({ address, roles, exp: Math.floor(now / 1000) + SESSION_SECONDS, iat: Math.floor(now / 1000), ...sso })
 
 /** The value of one cookie from a Cookie header. */
 export function cookieValue(header: string | null, name: string): string | undefined {

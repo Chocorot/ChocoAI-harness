@@ -114,6 +114,9 @@ export interface SsoUser {
   name: string | null
   role: AiRole
   roles: string[]
+  /** The SSO session this sign-in belongs to (null from an SSO that does not send it) and the raw ID token (for sign-out). */
+  sid: string | null
+  idToken: string
 }
 
 export class SsoError extends Error {}
@@ -154,5 +157,5 @@ export async function completeLogin(
   if (typeof payload.email !== 'string' || payload.email_verified !== true || typeof payload.sub !== 'string') throw new SsoError('token has no verified email')
   const role = roleFromClaims(payload.roles)
   if (!role) throw new SsoError('account has no AI role')
-  return { sub: payload.sub, email: payload.email.toLowerCase().trim(), name: typeof payload.name === 'string' ? payload.name : null, role, roles: (payload.roles as string[]).filter((r) => typeof r === 'string') }
+  return { sub: payload.sub, email: payload.email.toLowerCase().trim(), name: typeof payload.name === 'string' ? payload.name : null, role, roles: (payload.roles as string[]).filter((r) => typeof r === 'string'), sid: typeof payload.sid === 'string' ? payload.sid : null, idToken: body.id_token }
 }
