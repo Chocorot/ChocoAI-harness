@@ -32,7 +32,7 @@ The backend's own HTTP error body is read (bounded) and kept in `detail`; contex
 - Tool failures stay in the stream as `result` events with `ok:false`.
 
 ## What the model sees
-- Tool errors have one shape: `error[code]: what happened. hint` (`tools.err`). Codes: `edit_mismatch`, `denied`, `timeout`, `unknown_tool`, `forbidden`, `bad_args`, `not_found`, `permission`, `invalid`, `tool_failed`, `interrupted`.
+- Tool errors have one shape: `error[code]: what happened. hint` (`tools.err`). Codes: `edit_mismatch`, `denied`, `timeout`, `unknown_tool`, `forbidden`, `bad_args`, `not_found`, `permission`, `invalid`, `tool_failed`, `interrupted`, and from the internet tools `bad_url`, `fetch_blocked`, `fetch_failed`, `search_unavailable`, `search_failed`, plus `delegate_failed` (see internet.md, agent-mode.md). The tool table is `tools.TOOLS`; `errors.ToolError(code, message, hint)` is how a tool reports one.
 - When a run fails, a note is saved in the session as an assistant message: `[run failed: kind/code] message hint`. The next turn sees it and can adapt (for example do a smaller step after a timeout).
 - `{"session": id, "retry": true}` (no new goal) removes that note and continues where it stopped.
 - A crash between a tool call and its result leaves an orphan call, which backends reject. `repair_tail` adds stub results (`error[interrupted]`) on resume and before the failure note. Only the tail is repaired: orphans in the middle of very old sessions are not.

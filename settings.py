@@ -7,12 +7,11 @@ import os
 import shutil
 import tempfile
 
-SYSTEM_PROMPT = (
-    "You are a coding agent working in a workspace directory. Complete the user's goal with the tools: "
-    "read_file, edit_file, write_file, run_bash. Rules: "
+SYSTEM_PROMPT = (  # the tools a caller may use are described by tools.prompts_for(), appended per run
+    "You are an agent working in a workspace directory. Complete the user's goal with the tools you are given. Rules: "
     "read only the line ranges you need; "
     "prefer edit_file (exact unique old_text) over rewriting files; "
-    "check your work by running it; "
+    "check your work; "
     "keep replies short; "
     "when done, reply with a brief summary and call no tools."
 )
@@ -35,6 +34,12 @@ FIELDS = [
      "help": "Older tool traffic is shrunk above this estimate. Keep it below the backend window minus room for the reply."},
     {"key": "keep_turns", "label": "Turns kept intact", "type": "int", "default": 4, "min": 1, "max": 50,
      "help": "The last N turns are never shrunk by compaction."},
+    {"key": "max_seconds", "label": "Max seconds per run", "type": "int", "default": 900, "min": 1, "max": 7200,
+     "help": "Wall-clock budget of one run (including helpers). The run stops with a notice when it is used up."},
+    {"key": "max_run_tokens", "label": "Max tokens per run", "type": "int", "default": 200000, "min": 1000, "max": 5000000,
+     "help": "Prompt + reply tokens added up over every model call of a run (prompts are re-sent each turn)."},
+    {"key": "delegate_turns", "label": "Max turns of a helper", "type": "int", "default": 8, "min": 1, "max": 50,
+     "help": "Model calls a delegated subtask may use before it must report back."},
     {"key": "retries", "label": "Auto-retries on model errors", "type": "int", "default": 2, "min": 0, "max": 5,
      "help": "How often a run silently retries when the model server is down, errors or garbles a reply (waits 2s, 6s, 15s)."},
     {"key": "max_queue", "label": "Max runs waiting in line", "type": "int", "default": 8, "min": 0, "max": 100,

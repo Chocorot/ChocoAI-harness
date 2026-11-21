@@ -11,9 +11,9 @@ Tests: `AuthUnitTests`, `ModesTests` in `test_harness.py`.
 ## The mode table (`auth.MODES`)
 | mode | tools | chat stored | queue priority |
 |---|---|---|---|
-| admin | read_file, edit_file, write_file, run_bash | original `harness.db` | 0 |
-| user+shell | all four | the user's own DB | 1 |
-| user | read_file, edit_file, write_file (inside their session dir) | the user's own DB | 1 |
+| admin | all tools: files, run_bash, web_fetch, web_search, update_plan, delegate | original `harness.db` | 0 |
+| user+shell | all tools | the user's own DB | 1 |
+| user | files (inside their session dir), web_fetch, web_search, update_plan, delegate (no shell) | the user's own DB | 1 |
 | public | none | in the visitor's browser | 2 |
 
 A new tier = a new row. Tools are limited twice: the schemas sent to the model, and `tools.run(..., allow=)` when a call comes back (a model that asks for `run_bash` anyway gets `error[forbidden]`).

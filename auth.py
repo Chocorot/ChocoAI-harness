@@ -16,12 +16,14 @@ from errors import HarnessError
 
 COOKIE = "choco_harness"
 MAX_AGE = 30 * 86400
-ALL_TOOLS = ["read_file", "edit_file", "write_file", "run_bash"]
+FILES, SHELL = ["read_file", "edit_file", "write_file"], ["run_bash"]
+WEB, AGENT = ["web_fetch", "web_search"], ["update_plan", "delegate"]
+ALL_TOOLS = FILES + SHELL + WEB + AGENT
 # tools: what the model may call. store: where the chat lives. prio: queue priority (lower runs first).
 MODES = {
     "admin": {"tools": ALL_TOOLS, "store": "legacy", "prio": 0},  # HARNESS_TOKEN bearer: the CLI/API caller
     "user+shell": {"tools": ALL_TOOLS, "store": "user", "prio": 1},
-    "user": {"tools": [t for t in ALL_TOOLS if t != "run_bash"], "store": "user", "prio": 1},
+    "user": {"tools": FILES + WEB + AGENT, "store": "user", "prio": 1},
     "public": {"tools": [], "store": "client", "prio": 2},
 }
 ADDR = re.compile(r"^[a-z0-9._%+\-]{1,64}@[a-z0-9.\-]{1,190}\.[a-z]{2,}$")

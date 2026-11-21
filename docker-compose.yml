@@ -5,6 +5,10 @@ services:
     image: ghcr.io/chocorot/choco-harness:latest
     restart: unless-stopped
     env_file: .env
+    environment:
+      SEARCH_URL: http://searxng:8080/search   # web_search tool (docs/internet.md)
+      HARNESS_TRUST_PROXY: "1"                 # port is published on 127.0.0.1 only; every request comes through our tunnel
+    depends_on: [searxng]
     ports: ["127.0.0.1:8421:8080"]  # cloudflared tunnel -> http://localhost:8421
     mem_limit: 256m
     cpus: 1
@@ -14,6 +18,18 @@ services:
     volumes:
       - harness-data:/data
       - harness-ws:/workspace
+
+  searxng:
+    container_name: choco-searxng
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env (any long random string)}
+    volumes: ["./searxng:/etc/searxng"]   # copy the searxng/ folder next to this file on the server
+    mem_limit: 384m
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    # no ports: only the harness reaches it, over the compose network
 
 volumes:
   harness-data: {external: true}

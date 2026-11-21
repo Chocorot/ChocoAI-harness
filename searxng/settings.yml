@@ -1,0 +1,8 @@
+# Minimal SearxNG config for the harness' web_search tool. Mounted at /etc/searxng (see docker-compose.yml).
+# The secret key comes from the SEARXNG_SECRET environment variable.
+use_default_settings: true
+server:
+  limiter: false      # only the harness talks to it, on the compose network
+  image_proxy: false
+search:
+  formats: [html, json]   # the harness asks for ?format=json

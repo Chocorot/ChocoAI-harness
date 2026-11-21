@@ -18,10 +18,14 @@ Code: `harness.py` (`make_server`, `Sse`, `keepalive`, `run_agent`), `runq.py`. 
 | `think` / `text` | `d` | reasoning / answer delta |
 | `tool` | `id, name, args` | tool call about to run |
 | `result` | `id, d, ok` | tool result (cut to 2000 chars), `ok:false` = failed |
+| `plan` | `steps[{text,status}]` | the model's current checklist (update_plan) |
+| `notice` | `kind:"budget"`, `reason`, `msg` | a budget ended the run (see agent-mode.md); `done` follows |
 | `trimmed` | `dropped` | (visitors) the oldest messages were dropped to fit the window |
 | `retrying` | `attempt, in, kind, msg, reset` | automatic retry (see errors.md) |
 | `error` | see errors.md | terminal |
 | `done` | | terminal |
+
+Events from a delegated helper carry an extra `"sub": <call id>` (`status`, `think`, `text`, `tool`, `result`, `retrying`).
 
 A comment line `: ka` is sent every 10 s (`harness.KEEPALIVE`). Pages ignore it. It stops Cloudflare and other proxies from cutting a stream that is silent during a long prefill or a model load (about 22 s to the first token on lyna).
 

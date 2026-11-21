@@ -6,7 +6,8 @@ Python 3.11+ standard library only. About 35 MB RSS idle. State lives in one SQL
 | File | Role |
 |---|---|
 | `harness.py` | CLI, agent loop, streaming, context compaction, optional HTTP mode |
-| `tools.py` | The 4 tools (`read_file`, `edit_file`, `write_file`, `run_bash`) and their JSON schemas |
+| `tools.py` | The tool table (`read_file`, `edit_file`, `write_file`, `run_bash`, `web_fetch`, `web_search`, `update_plan`, `delegate`): schemas, prompt hints, handlers |
+| `web.py` | Internet for the model: page fetch with an SSRF guard, SearxNG search ([docs/internet.md](docs/internet.md)) |
 | `auth.py` | Sign-in with the DMS mailbox (IMAP), signed cookie, the modes table, throttles, per-user storage paths ([docs/auth-and-modes.md](docs/auth-and-modes.md), [docs/storage-isolation.md](docs/storage-isolation.md)) |
 | `errors.py` | The table of failure kinds: what the user sees, what the model is told, what is retried ([docs/errors.md](docs/errors.md)) |
 | `runq.py` | Bounded run queue: one run at a time, the rest wait in line ([docs/chat-streaming.md](docs/chat-streaming.md)) |
@@ -112,9 +113,16 @@ systemd user unit: copy the repo to `~/ChocoAI-harness`, then follow the 3 comma
 Push to `main` -> GitHub Actions ([deploy.yml](.github/workflows/deploy.yml)) runs the tests, builds the image and
 pushes `ghcr.io/chocorot/choco-harness:latest`. On the server, [docker-compose.yml](docker-compose.yml) runs that image
 with the watchtower label, so watchtower (polls every 5 min) pulls and restarts it. No SSH secrets needed.
-Server setup is one-time: copy `docker-compose.yml` next to `.env` in `~/ChocoAI-harness/`, then `docker compose up -d`.
+Server setup is one-time: copy `docker-compose.yml` **and the `searxng/` folder** next to `.env` in `~/ChocoAI-harness/`, add `SEARXNG_SECRET=<random>` to `.env`, then `docker compose up -d`.
+Watchtower only updates images: a changed compose file or `searxng/settings.yml` must be copied by hand.
 Named volumes `harness-data` / `harness-ws` survive updates. Roll back by pinning the compose image to a
 `sha-<commit>` tag.
+
+## Agent mode and internet
+
+Signed-in users and admin get `web_fetch`, `web_search`, `update_plan` and `delegate` on top of the file tools: the model plans, looks, thinks and
+repeats, with budgets (`max_turns`, `max_seconds`, `max_run_tokens`) that end a run with a notice instead of silently. See
+[docs/agent-mode.md](docs/agent-mode.md) and [docs/internet.md](docs/internet.md) (includes the SearxNG setup).
 
 ## How it works
 
@@ -125,6 +133,7 @@ Named volumes `harness-data` / `harness-ws` survive updates. Roll back by pinnin
   4 turns are untouched. The DB keeps the full history; only what is sent is compacted.
 - **Streaming**: assistant text prints as it arrives; tool calls (including several in one reply) are buffered
   and run in order after the reply finishes. Tool progress goes to stderr.
+- **Tool results**: every failure has the shape `error[code]: what happened. hint`. Old `read_file` / `web_fetch` / `web_search` results are replaced by a one-line stub when compacting.
 - **Tool safety**: `edit_file` fails unless `old_text` occurs exactly once. `read_file` caps at 400 lines per call.
   `run_bash` output is cut to 4,000 chars per stream. Every tool call is logged in the `audit` table.
 - **Limits**: `max_turns` stops runaway loops; a stopped session can be continued with `--session`.

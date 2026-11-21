@@ -53,6 +53,14 @@ OVERFLOW = re.compile(r"context (length|window|size|overflow)|n_ctx|too many tok
                       r"exceeds? the (available )?context|tokens to keep", re.I)
 
 
+class ToolError(Exception):
+    """A tool failed in a way the model can act on. tools.run turns it into `error[code]: message. hint`."""
+
+    def __init__(self, code, message, hint=""):
+        super().__init__(message)
+        self.code, self.message, self.hint = code, message, hint
+
+
 class HarnessError(Exception):
     def __init__(self, kind, message=None, *, code=None, detail=""):
         row = KINDS[kind]

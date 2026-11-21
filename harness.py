@@ -24,9 +24,12 @@ import runq
 import settings
 import tools
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
 MAX_BODY = 1_000_000  # bytes accepted on /task
+BULKY = {"read_file", "web_fetch", "web_search"}  # results old enough to be re-fetched are replaced by a stub when compacting
+HELPER_PROMPT = (" You are a helper working on one subtask for another agent. Do only that task, then finish with a short "
+                 "summary (under 150 words) of what you found or did.")
 
 COMPACT_AT = settings.default("compact_at")  # default only; the live value is settings.get("compact_at")
 
@@ -59,8 +62,8 @@ def compact(messages, limit=None, keep=None):
     for m in messages[2:cut]:
         if m["role"] == "tool":
             c = m["content"]
-            if names.get(m["tool_call_id"]) == "read_file":
-                c = f"[pruned read_file output, {len(c)} chars]"
+            if names.get(m["tool_call_id"]) in BULKY:
+                c = f"[pruned {names[m['tool_call_id']]} output, {len(c)} chars]"
             elif len(c) > 200:
                 c = c[:200] + f"... [truncated, {len(c)} chars]"
             m = {**m, "content": c}
@@ -194,45 +197,156 @@ def repair_tail(conn, sid, messages):
             db.save_msg(conn, sid, m)
 
 
+class DbStore:
+    """Where a session run saves its messages, token usage and tool audit rows."""
+
+    def __init__(self, conn, sid):
+        self.conn, self.sid = conn, sid
+
+    def msg(self, m):
+        db.save_msg(self.conn, self.sid, m)
+
+    def usage(self, turn, usage, est):
+        db.log_usage(self.conn, self.sid, turn, usage.get("prompt_tokens"), usage.get("completion_tokens"), est)
+
+    def tool(self, name, args, result):
+        db.log_tool(self.conn, self.sid, name, args, result)
+
+
+class HelperStore:
+    """A helper's (delegate) conversation is thrown away; only its tool calls are audited, in the parent's session."""
+
+    def __init__(self, parent):
+        self.parent = parent
+
+    def msg(self, m):
+        pass
+
+    def usage(self, turn, usage, est):
+        pass
+
+    def tool(self, name, args, result):
+        self.parent.tool(name, args, result)
+
+
+class Run:
+    """Everything one agent loop needs. A helper gets a copy with fewer tools and its own chat function."""
+
+    def __init__(self, store, ws, auto_approve, emit, allow, chat_fn, deadline, depth=0, chat_for=None):
+        self.store, self.ws, self.auto_approve, self.emit, self.allow = store, ws, auto_approve, emit, allow
+        self.chat_fn, self.deadline, self.depth, self.chat_for = chat_fn, deadline, depth, chat_for
+
+
+def plan_steps(raw):
+    """Clean the model's plan: up to 20 steps of {text, status}. Plain strings are accepted as todo steps."""
+    out = []
+    for x in raw if isinstance(raw, list) else []:
+        text, status = (x.get("text"), x.get("status")) if isinstance(x, dict) else (x, None)
+        if isinstance(text, str) and text.strip():
+            out.append({"text": text.strip()[:200], "status": status if status in ("todo", "doing", "done") else "todo"})
+    return out[:20]
+
+
+def tool_update_plan(run, call_id, args):
+    steps = plan_steps(args.get("steps"))
+    if not steps:
+        return tools.err("bad_args", "steps must be a non-empty list", 'send [{"text": "...", "status": "todo"}]')
+    run.emit({"t": "plan", "steps": steps})
+    return f"ok: plan has {len(steps)} steps, {sum(x['status'] == 'done' for x in steps)} done"
+
+
+def tool_delegate(run, call_id, args):
+    """Run a subtask in a fresh context. Only its final summary comes back, so the parent's window stays small."""
+    task = args.get("task")
+    if not isinstance(task, str) or not task.strip():
+        return tools.err("bad_args", "task must be text", "describe the subtask in a sentence or two")
+    names = list(tools.TOOLS) if run.allow is None else run.allow
+    allow = [n for n in names if n not in tools.AGENT]  # helpers can't plan or delegate further
+    sub = Run(HelperStore(run.store), run.ws, run.auto_approve, lambda ev: run.emit({**ev, "sub": call_id}), allow,
+              run.chat_for(allow), run.deadline, run.depth + 1, run.chat_for)
+    messages = [{"role": "system", "content": system_text(allow) + HELPER_PROMPT}, {"role": "user", "content": task.strip()}]
+    try:
+        out = agent_loop(sub, messages, settings.get("delegate_turns"))
+    except errors.HarnessError as e:
+        return tools.err("delegate_failed", e.message, "do the subtask yourself or try again")
+    return out[:3000] or "(the helper returned nothing)"
+
+
+AGENT_TOOLS = {"update_plan": tool_update_plan, "delegate": tool_delegate}  # tools that need the run, see tools.AGENT
+
+
+def call_tool(run, tc):
+    name = tc["function"]["name"]
+    run.emit({"t": "status", "phase": "tool", "name": name})
+    try:
+        args = json.loads(tc["function"]["arguments"] or "{}")
+        run.emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
+        if not isinstance(args, dict):
+            result = tools.err("bad_args", "arguments must be a JSON object", "")
+        elif bad := tools.forbidden(name, run.allow):
+            result = bad
+        elif name in AGENT_TOOLS:
+            result = AGENT_TOOLS[name](run, tc["id"], args)
+        else:
+            result = tools.run(name, args, run.ws, run.auto_approve, run.allow)
+    except json.JSONDecodeError as e:
+        args = tc["function"]["arguments"]
+        result = tools.err("bad_args", f"invalid JSON arguments: {e}", "resend the call with valid JSON")
+        run.emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
+    run.emit({"t": "result", "id": tc["id"], "d": str(result)[:2000], "ok": not str(result).startswith("error")})
+    run.store.tool(name, args, result)
+    return {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
+
+
+def agent_loop(run, messages, max_turns):
+    """Act, look at the result, think again, until the model answers without tool calls. Returns the final text, or
+    `[stopped: ...]` when a budget (turns, seconds, tokens) ran out; that also emits a `notice` event."""
+    spent = 0
+
+    def stop(reason, msg):
+        run.emit({"t": "notice", "kind": "budget", "reason": reason, "msg": msg})
+        return f"[stopped: {reason}]"
+
+    for turn in range(max_turns):
+        if time.time() > run.deadline:
+            return stop(f"max_seconds={settings.get('max_seconds')} reached", "Stopped: the time limit for one run was reached. Say 'continue' to go on.")
+        if spent > settings.get("max_run_tokens"):
+            return stop(f"max_run_tokens={settings.get('max_run_tokens')} reached", "Stopped: the token limit for one run was reached. Say 'continue' to go on.")
+        run.emit({"t": "status", "phase": "model", "turn": turn + 1, "max": max_turns})
+        msg, usage, sent = call_model(messages, run.emit, run.chat_fn)
+        spent += (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0) or est_tokens(sent)
+        run.store.usage(turn, usage, est_tokens(sent))
+        messages.append(msg)
+        run.store.msg(msg)
+        if not msg.get("tool_calls"):
+            return msg["content"] or ""
+        for tc in msg["tool_calls"]:
+            tm = call_tool(run, tc)
+            messages.append(tm)
+            run.store.msg(tm)
+    return stop(f"max_turns={max_turns} reached", f"Stopped after {max_turns} steps. Say 'continue' to go on.")
+
+
 def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit, allow=None):
-    """Loop until the model answers without tool calls. Returns the final text.
+    """One run of a session. Returns the final text.
     `allow`: tool names this caller may use (None = all). Enforced in the schemas sent AND when a call comes back.
     Any failure is saved into the session as a note (so the model's next turn knows) and raised as a HarnessError."""
-    schemas = None if allow is None else tools.schemas_for(allow)
-    chat_fn = chat_fn or (lambda m, e: chat(m, e, schemas))  # `chat` resolved at call time so tests can patch it
     max_turns = max_turns or settings.get("max_turns")  # an explicit value (CLI flag) wins over the saved setting
+    def chat_for(names):  # the model function for a caller allowed `names` (None = all tools); `chat` is looked up
+        if chat_fn:  # when called so tests can patch it, and a custom chat_fn (tests) serves helpers too
+            return chat_fn
+        schemas = None if names is None else tools.schemas_for(names)
+        return lambda m, e: chat(m, e, schemas)
+
+    run = Run(DbStore(conn, sid), ws, auto_approve, emit, allow, chat_for(allow), time.time() + settings.get("max_seconds"), 0, chat_for)
     try:
-        for turn in range(max_turns):
-            emit({"t": "status", "phase": "model", "turn": turn + 1, "max": max_turns})
-            msg, usage, sent = call_model(messages, emit, chat_fn)
-            db.log_usage(conn, sid, turn, usage.get("prompt_tokens"), usage.get("completion_tokens"), est_tokens(sent))
-            messages.append(msg)
-            db.save_msg(conn, sid, msg)
-            if not msg.get("tool_calls"):
-                return msg["content"] or ""
-            for tc in msg["tool_calls"]:
-                name = tc["function"]["name"]
-                emit({"t": "status", "phase": "tool", "name": name})
-                try:
-                    args = json.loads(tc["function"]["arguments"] or "{}")
-                    emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
-                    result = tools.run(name, args, ws, auto_approve, allow)
-                except json.JSONDecodeError as e:
-                    args = tc["function"]["arguments"]
-                    result = tools.err("bad_args", f"invalid JSON arguments: {e}", "resend the call with valid JSON")
-                    emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
-                emit({"t": "result", "id": tc["id"], "d": str(result)[:2000], "ok": not str(result).startswith("error")})
-                db.log_tool(conn, sid, name, args, result)
-                tm = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
-                messages.append(tm)
-                db.save_msg(conn, sid, tm)
-        return f"[stopped: max_turns={max_turns} reached]"
+        return agent_loop(run, messages, max_turns)
     except Exception as e:
         err = errors.classify(e)
         repair_tail(conn, sid, messages)  # keep the history valid before the note goes in
         note = {"role": "assistant", "content": err.note()}
         messages.append(note)
-        db.save_msg(conn, sid, note)
+        run.store.msg(note)
         raise err from e
 
 
@@ -255,7 +369,12 @@ def trim_history(history, max_chars):
     return kept, len(history) - len(kept)
 
 
-def start(conn, goal, session, retry=False):
+def system_text(allow=None):
+    """The saved system prompt plus one hint per tool this caller may use (allow=None: just the saved prompt)."""
+    return " ".join(x for x in (settings.get("system_prompt"), tools.prompts_for(allow) if allow is not None else "") if x)
+
+
+def start(conn, goal, session, retry=False, allow=None):
     """Create or resume a session, add the goal as a user message. Returns (sid, messages).
     `retry` removes the failure note of the last run so the model simply continues where it stopped."""
     if session:
@@ -268,10 +387,10 @@ def start(conn, goal, session, retry=False):
             db.drop_last(conn, sid)
         repair_tail(conn, sid, messages)
         if messages and messages[0]["role"] == "system":  # a saved prompt edit applies to resumed sessions too
-            messages[0] = {"role": "system", "content": settings.get("system_prompt")}
+            messages[0] = {"role": "system", "content": system_text(allow)}
     else:
         sid = db.new_session(conn, goal)
-        messages = [{"role": "system", "content": settings.get("system_prompt")}]
+        messages = [{"role": "system", "content": system_text(allow)}]
         db.save_msg(conn, sid, messages[0])
     if goal:
         messages.append({"role": "user", "content": goal})
@@ -326,6 +445,7 @@ def make_server(host, port, ws, max_turns):
     queue = runq.RunQueue(lambda: settings.get("max_queue"))  # one agent run at a time: the local model serves one stream
     page = Path(__file__).with_name("index.html")
     public_hits, login_fails = auth.Throttle(), auth.Throttle()  # per server, so tests stay isolated
+    active = set()  # (address, session id) of runs that are executing now, so a page that came back can tell
 
     class H(BaseHTTPRequestHandler):
         sse = None  # set once this request turned into an event stream
@@ -547,7 +667,8 @@ def make_server(host, port, ws, max_turns):
                 return [{**m, "note": True} if (m.get("content") or "").startswith(errors.NOTE_PREFIX) else m
                         for m in db.load(conn, sid) if m["role"] != "system"]
 
-            self._send(200, {"id": sid, "messages": self._with_user_db(load)})
+            addr = self._need_user()
+            self._send(200, {"id": sid, "running": (addr, sid) in active, "messages": self._with_user_db(load)})
 
         # ---- running the model ----------------------------------------------------------------------------------
         def _begin(self, stream):
@@ -610,14 +731,16 @@ def make_server(host, port, ws, max_turns):
                 with queue.slot(prio=rule["prio"], on_wait=self._on_wait(emit), tick=KEEPALIVE):
                     conn = db.connect(path)
                     try:
-                        sid, messages = start(conn, goal, session, retry)
+                        sid, messages = start(conn, goal, session, retry, rule["tools"])
                         self.sid = sid
                         emit({"t": "session", "id": sid})
                         run_ws = auth.session_ws(ws, addr, sid) if addr else ws
-                        reply = run_agent(conn, sid, messages, run_ws, True, max_turns, emit=emit, allow=rule["tools"])
+                        active.add((addr, sid))
+                        try:
+                            reply = run_agent(conn, sid, messages, run_ws, True, max_turns, emit=emit, allow=rule["tools"])
+                        finally:
+                            active.discard((addr, sid))
                         if self.sse:
-                            if reply.startswith("[stopped"):
-                                emit({"t": "text", "d": "\n\n" + reply})
                             emit({"t": "done"})
                         else:
                             self._send(200, {"session": sid, "reply": reply})
@@ -685,7 +808,7 @@ def main():
     if not a.goal and not a.session:
         ap.error("give a goal or --session")
     try:
-        sid, messages = start(conn, a.goal, a.session)
+        sid, messages = start(conn, a.goal, a.session, allow=auth.MODES["admin"]["tools"])
     except errors.HarnessError as e:
         sys.exit(e.message)
     print(f"[session {sid}]", file=sys.stderr)
