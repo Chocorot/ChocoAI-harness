@@ -5,6 +5,8 @@ import hmac
 import http.client
 import json
 import os
+import re
+import shutil
 import sys
 import threading
 import time
@@ -15,13 +17,14 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import auth
 import db
 import errors
 import runq
 import settings
 import tools
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
 MAX_BODY = 1_000_000  # bytes accepted on /task
 
@@ -115,12 +118,18 @@ def parse_sse(lines, emit=cli_emit):
     return msg, usage
 
 
-def chat(messages, emit=cli_emit):
+def chat(messages, emit=cli_emit, schemas=None, max_tokens=None):
+    """One streamed model call. `schemas` = the tools this caller may use (None = all; empty = none, key omitted)."""
+    schemas = tools.SCHEMAS if schemas is None else schemas
     body = {"model": settings.get("model"), "messages": messages,
-            "tools": tools.SCHEMAS, "stream": True, "stream_options": {"include_usage": True}}
+            "stream": True, "stream_options": {"include_usage": True}}
+    if schemas:
+        body["tools"] = schemas
     for k in ("temperature", "max_tokens"):  # optional: only sent when set
         if settings.get(k) is not None:
             body[k] = settings.get(k)
+    if max_tokens:  # a caller-specific cap (public visitors) wins over the saved value
+        body["max_tokens"] = min(max_tokens, body.get("max_tokens", max_tokens))
     req = urllib.request.Request(
         os.environ.get("BASE_URL", "http://localhost:1235/v1").rstrip("/") + "/chat/completions",
         json.dumps(body).encode(),
@@ -185,10 +194,12 @@ def repair_tail(conn, sid, messages):
             db.save_msg(conn, sid, m)
 
 
-def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit):
+def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit, allow=None):
     """Loop until the model answers without tool calls. Returns the final text.
+    `allow`: tool names this caller may use (None = all). Enforced in the schemas sent AND when a call comes back.
     Any failure is saved into the session as a note (so the model's next turn knows) and raised as a HarnessError."""
-    chat_fn = chat_fn or chat  # resolved at call time so tests can patch it
+    schemas = None if allow is None else tools.schemas_for(allow)
+    chat_fn = chat_fn or (lambda m, e: chat(m, e, schemas))  # `chat` resolved at call time so tests can patch it
     max_turns = max_turns or settings.get("max_turns")  # an explicit value (CLI flag) wins over the saved setting
     try:
         for turn in range(max_turns):
@@ -205,7 +216,7 @@ def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=Non
                 try:
                     args = json.loads(tc["function"]["arguments"] or "{}")
                     emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
-                    result = tools.run(name, args, ws, auto_approve)
+                    result = tools.run(name, args, ws, auto_approve, allow)
                 except json.JSONDecodeError as e:
                     args = tc["function"]["arguments"]
                     result = tools.err("bad_args", f"invalid JSON arguments: {e}", "resend the call with valid JSON")
@@ -223,6 +234,25 @@ def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=Non
         messages.append(note)
         db.save_msg(conn, sid, note)
         raise err from e
+
+
+def run_public(history, emit, chat_fn=None):
+    """Stateless chat for visitors: nothing is stored here, the page keeps the history. No tools. A failure is raised
+    as a HarnessError whose `note()` the page keeps in its history, like the saved note of a signed-in session."""
+    chat_fn = chat_fn or (lambda m, e: chat(m, e, [], settings.get("public_max_tokens")))
+    msg, _, _ = call_model([{"role": "system", "content": settings.get("public_prompt")}, *history], emit, chat_fn)
+    return msg["content"] or ""
+
+
+def trim_history(history, max_chars):
+    """Drop the oldest messages until the history fits. Returns (kept, dropped). The last message always stays."""
+    size = lambda h: sum(len(m["content"]) for m in h)
+    kept = list(history)
+    while len(kept) > 1 and size(kept) > max_chars:
+        kept.pop(0)
+    while kept and kept[0]["role"] != "user":  # a window must start with the user
+        kept.pop(0)
+    return kept, len(history) - len(kept)
 
 
 def start(conn, goal, session, retry=False):
@@ -295,16 +325,20 @@ def keepalive(sse, stop):
 def make_server(host, port, ws, max_turns):
     queue = runq.RunQueue(lambda: settings.get("max_queue"))  # one agent run at a time: the local model serves one stream
     page = Path(__file__).with_name("index.html")
+    public_hits, login_fails = auth.Throttle(), auth.Throttle()  # per server, so tests stay isolated
 
     class H(BaseHTTPRequestHandler):
         sse = None  # set once this request turned into an event stream
         sid = None
 
-        def _send(self, code, body, ctype="application/json"):
+        def _send(self, code, body, ctype="application/json", headers=()):
             data = body if isinstance(body, bytes) else json.dumps(body).encode()
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
+            for k, v in (("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "same-origin"),
+                         ("X-Frame-Options", "DENY"), *headers):
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(data)
 
@@ -320,7 +354,7 @@ def make_server(host, port, ws, max_turns):
                 err = errors.classify(e)
                 if err.kind == "internal":
                     traceback.print_exc()
-                if err.kind not in ("auth", "not_found", "bad_request", "busy"):  # client mistakes would only fill the log
+                if err.kind not in ("auth", "not_found", "bad_request", "busy", "forbidden", "rate_limited"):  # client mistakes only fill the log
                     self._log(rid, err)
                 try:
                     self.sse.event(err.event(rid)) if self.sse else self._send(err.status, err.body(rid))
@@ -339,6 +373,50 @@ def make_server(host, port, ws, max_turns):
             except Exception:  # logging must never hide the real reply
                 pass
 
+        # ---- who is calling -------------------------------------------------------------------------------------
+        def _who(self):
+            """(mode, address). Bearer HARNESS_TOKEN = admin; a valid sign-in cookie = user; anything else = public."""
+            tok = os.environ.get("HARNESS_TOKEN")
+            if tok and hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {tok}"):
+                return "admin", None
+            addr = auth.read_cookie(auth.cookie_from(self.headers.get("Cookie")) or "")
+            return (auth.mode_for(addr), addr) if addr else ("public", None)
+
+        def _need_user(self):
+            addr = self._who()[1]
+            if not addr:
+                raise errors.HarnessError("auth", "Sign in to use saved chats.")
+            return addr
+
+        def _ip(self):
+            if os.environ.get("HARNESS_TRUST_PROXY") == "1":  # only when every request really comes through our own proxy/tunnel
+                fwd = self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                if fwd:
+                    return fwd
+            return self.client_address[0]
+
+        def _same_origin(self):
+            """Cookie requests must come from our own page (on top of SameSite=Lax)."""
+            origin = self.headers.get("Origin")
+            if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host"):
+                raise errors.HarnessError("forbidden")
+
+        def _json_body(self):
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = -1
+            if not 0 < n <= MAX_BODY:
+                raise errors.HarnessError("bad_request", "Request body is missing or too large.")
+            try:
+                req = json.loads(self.rfile.read(n))
+            except ValueError:
+                raise errors.HarnessError("bad_request", "Request body must be JSON.") from None
+            if not isinstance(req, dict):
+                raise errors.HarnessError("bad_request", "Request body must be a JSON object.")
+            return req
+
+        # ---- admin API for the dashboard ------------------------------------------------------------------------
         def _manage(self, method):
             """Admin API for the dashboard (via the node agent). Its own token, independent of /task. No token set = no API."""
             tok = os.environ.get("HARNESS_ADMIN_TOKEN")
@@ -372,6 +450,7 @@ def make_server(host, port, ws, max_turns):
                 return self._send(200, manifest(queue.busy()))
             self._send(404, {"error": "not found"})
 
+        # ---- routing --------------------------------------------------------------------------------------------
         def do_PUT(self):
             self._guard(lambda rid: self._manage("PUT") if self.path.startswith("/manage/")
                         else self._send(404, {"error": "not found"}))
@@ -379,79 +458,163 @@ def make_server(host, port, ws, max_turns):
         def do_GET(self):
             self._guard(self._get)
 
-        def _get(self, rid):
-            if self.path.startswith("/manage/"):
-                return self._manage("GET")
-            if self.path == "/health":
-                self._send(200, {"ok": True})
-            elif self.path in ("/", "/index.html") and page.exists():  # public page; /task is what the token guards
-                self._send(200, page.read_bytes(), "text/html; charset=utf-8")
-            else:
-                self._send(404, {"error": "not found"})
-
-        def _json_body(self):
-            try:
-                n = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                n = -1
-            if not 0 < n <= MAX_BODY:
-                raise errors.HarnessError("bad_request", "Request body is missing or too large.")
-            try:
-                req = json.loads(self.rfile.read(n))
-            except ValueError:
-                raise errors.HarnessError("bad_request", "Request body must be JSON.") from None
-            if not isinstance(req, dict):
-                raise errors.HarnessError("bad_request", "Request body must be a JSON object.")
-            return req
-
         def do_POST(self):
             self._guard(self._post)
 
+        def do_DELETE(self):
+            self._guard(self._delete)
+
+        def _get(self, rid):
+            path = urllib.parse.urlparse(self.path).path
+            if path.startswith("/manage/"):
+                return self._manage("GET")
+            if path == "/health":
+                return self._send(200, {"ok": True})
+            if path in ("/", "/index.html") and page.exists():  # public page; the API decides what a caller may do
+                return self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+            if path == "/api/me":
+                return self._me()
+            if path == "/api/sessions":
+                return self._send(200, {"sessions": self._with_user_db(lambda conn: db.list_sessions(conn, 100))})
+            m = re.fullmatch(r"/api/sessions/(\d+)", path)
+            if m:
+                return self._session_get(int(m.group(1)))
+            raise errors.HarnessError("not_found")
+
         def _post(self, rid):
-            if self.path != "/task":
+            path = urllib.parse.urlparse(self.path).path
+            if path == "/task":
+                return self._task()
+            if path in ("/api/login", "/api/logout", "/api/chat"):
+                self._same_origin()
+                return {"/api/login": self._login, "/api/logout": self._logout, "/api/chat": self._chat}[path]()
+            raise errors.HarnessError("not_found")
+
+        def _delete(self, rid):
+            self._same_origin()
+            m = re.fullmatch(r"/api/sessions/(\d+)", urllib.parse.urlparse(self.path).path)
+            if not m:
                 raise errors.HarnessError("not_found")
+            addr, sid = self._need_user(), int(m.group(1))
+
+            def drop(conn):
+                if not db.session_exists(conn, sid):
+                    raise errors.HarnessError("not_found")
+                db.delete_session(conn, sid)
+
+            self._with_user_db(drop)
+            shutil.rmtree(auth.session_ws(ws, addr, sid, create=False), ignore_errors=True)
+            self._send(200, {"ok": True})
+
+        # ---- identity endpoints ---------------------------------------------------------------------------------
+        def _me(self):
+            mode, addr = self._who()
+            rule = auth.MODES[mode]
+            self._send(200, {"mode": mode, "address": addr, "capabilities": {
+                "login": auth.enabled(), "tools": rule["tools"], "shell": "run_bash" in rule["tools"],
+                "history": rule["store"]}})
+
+        def _login(self):
+            if not auth.enabled():
+                raise errors.HarnessError("not_found")
+            req = self._json_body()
+            ip, addr, pw = self._ip(), auth.normalize(req.get("email")), auth.check_password(req.get("password"))
+            if login_fails.blocked(ip, 20, 600) or login_fails.blocked(addr, 5, 600):
+                raise errors.HarnessError("rate_limited", "Too many sign-in attempts. Try again in a few minutes.")
+            if not auth.verify_password(addr, pw):  # same answer for a wrong password and an unknown mailbox
+                login_fails.hit(ip, 600)
+                login_fails.hit(addr, 600)
+                raise errors.HarnessError("auth", "Incorrect email or password.")
+            secure = "" if os.environ.get("HARNESS_INSECURE_COOKIES") == "1" else "; Secure"
+            cookie = f"{auth.COOKIE}={auth.make_cookie(addr)}; Path=/; Max-Age={auth.MAX_AGE}; HttpOnly; SameSite=Lax{secure}"
+            self._send(200, {"ok": True, "address": addr, "mode": auth.mode_for(addr)}, headers=[("Set-Cookie", cookie)])
+
+        def _logout(self):
+            self._send(200, {"ok": True}, headers=[("Set-Cookie", f"{auth.COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")])
+
+        # ---- saved chats (per-user DB) --------------------------------------------------------------------------
+        def _with_user_db(self, fn):
+            conn = db.connect(auth.db_path(self._need_user()))
+            try:
+                return fn(conn)
+            finally:
+                conn.close()
+
+        def _session_get(self, sid):
+            def load(conn):
+                if not db.session_exists(conn, sid):
+                    raise errors.HarnessError("not_found")
+                return [{**m, "note": True} if (m.get("content") or "").startswith(errors.NOTE_PREFIX) else m
+                        for m in db.load(conn, sid) if m["role"] != "system"]
+
+            self._send(200, {"id": sid, "messages": self._with_user_db(load)})
+
+        # ---- running the model ----------------------------------------------------------------------------------
+        def _begin(self, stream):
+            """Open the event stream (and its keepalive) when `stream`. Returns (emit, stop)."""
+            if not stream:
+                return (lambda ev: None), None
+            self.send_response(200)  # no Content-Length: HTTP/1.0 close-delimited body
+            for k, v in (("Content-Type", "text/event-stream"), ("Cache-Control", "no-cache"),
+                         ("X-Accel-Buffering", "no")):
+                self.send_header(k, v)
+            self.end_headers()
+            self.sse = Sse(self.wfile)
+            stop = threading.Event()
+            threading.Thread(target=keepalive, args=(self.sse, stop), daemon=True).start()
+            return self.sse.event, stop
+
+        def _on_wait(self, emit):
+            def on_wait(ahead):
+                if self.sse and not self.sse.alive:
+                    raise ClientGone
+                emit({"t": "queued", "pos": ahead})
+            return on_wait
+
+        def _task(self):
             tok = os.environ.get("HARNESS_TOKEN")
-            if tok and not hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {tok}"):
+            if not tok:  # /task runs shell commands: no token set = no endpoint
+                raise errors.HarnessError("not_found")
+            if not hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {tok}"):
                 raise errors.HarnessError("auth")
             req = self._json_body()
+            self._run(req, "admin", None, bool(req.get("stream")))
+
+        def _chat(self):
+            mode, addr = self._who()
+            req = self._json_body()
+            if mode == "public":
+                return self._chat_public(req)
+            self._run(req, mode, addr, req.get("stream", True) is not False)
+
+        def _run(self, req, mode, addr, stream):
+            """A session run for a caller with storage: admin (the original DB) or a signed-in user (their own DB)."""
+            rule = auth.MODES[mode]
             goal, session, retry = req.get("goal"), req.get("session"), bool(req.get("retry"))
             if not goal and not session:
                 raise errors.HarnessError("bad_request", "goal or session required")
             if session is not None and (isinstance(session, bool) or not isinstance(session, int)):
                 raise errors.HarnessError("bad_request", "session must be a number")
-            if goal is not None and not isinstance(goal, str):
+            if goal is not None and (not isinstance(goal, str) or len(goal) > MAX_BODY):
                 raise errors.HarnessError("bad_request", "goal must be text")
+            path = auth.db_path(addr) if addr else None  # None = the original (admin) DB
             if session:  # answer 404 as plain HTTP, before an event stream is opened
-                conn = db.connect()
+                conn = db.connect(path)
                 try:
                     if not db.session_exists(conn, session):
                         raise errors.HarnessError("not_found", f"no such session: {session}")
                 finally:
                     conn.close()
-            emit, stop = (lambda ev: None), None
-            if req.get("stream"):
-                self.send_response(200)  # no Content-Length: HTTP/1.0 close-delimited body
-                for k, v in (("Content-Type", "text/event-stream"), ("Cache-Control", "no-cache"),
-                             ("X-Accel-Buffering", "no")):
-                    self.send_header(k, v)
-                self.end_headers()
-                self.sse = Sse(self.wfile)
-                emit, stop = self.sse.event, threading.Event()
-                threading.Thread(target=keepalive, args=(self.sse, stop), daemon=True).start()
-
-            def on_wait(ahead):
-                if self.sse and not self.sse.alive:
-                    raise ClientGone
-                emit({"t": "queued", "pos": ahead})
-
+            emit, stop = self._begin(stream)
             try:
-                with queue.slot(on_wait=on_wait, tick=KEEPALIVE):
-                    conn = db.connect()
+                with queue.slot(prio=rule["prio"], on_wait=self._on_wait(emit), tick=KEEPALIVE):
+                    conn = db.connect(path)
                     try:
                         sid, messages = start(conn, goal, session, retry)
                         self.sid = sid
                         emit({"t": "session", "id": sid})
-                        reply = run_agent(conn, sid, messages, ws, True, max_turns, emit=emit)
+                        run_ws = auth.session_ws(ws, addr, sid) if addr else ws
+                        reply = run_agent(conn, sid, messages, run_ws, True, max_turns, emit=emit, allow=rule["tools"])
                         if self.sse:
                             if reply.startswith("[stopped"):
                                 emit({"t": "text", "d": "\n\n" + reply})
@@ -463,6 +626,35 @@ def make_server(host, port, ws, max_turns):
             finally:
                 if stop:
                     stop.set()
+
+        def _chat_public(self, req):
+            """Visitors: chat only, history kept by the page, rate limited, short line, capped reply."""
+            msgs, cap = req.get("messages"), settings.get("public_max_chars")
+            if not isinstance(msgs, list) or not 1 <= len(msgs) <= 200:
+                raise errors.HarnessError("bad_request", "messages must be a list of 1 to 200 items.")
+            clean = []
+            for m in msgs:
+                if not isinstance(m, dict) or m.get("role") not in ("user", "assistant") or \
+                        not isinstance(m.get("content"), str) or not m["content"].strip():
+                    raise errors.HarnessError("bad_request", "Each message needs a role (user or assistant) and text.")
+                clean.append({"role": m["role"], "content": m["content"]})
+            if clean[-1]["role"] != "user":
+                raise errors.HarnessError("bad_request", "The last message must come from the user.")
+            if len(clean[-1]["content"]) > cap:
+                raise errors.HarnessError("bad_request", "That message is too long.")
+            if not public_hits.allow(self._ip(), settings.get("public_rpm"), 60):
+                raise errors.HarnessError("rate_limited")
+            kept, dropped = trim_history(clean, cap)
+            emit, stop = self._begin(True)
+            try:
+                if dropped:
+                    emit({"t": "trimmed", "dropped": dropped})
+                with queue.slot(prio=auth.MODES["public"]["prio"], on_wait=self._on_wait(emit), tick=KEEPALIVE,
+                                limit=settings.get("max_queue_public")):
+                    run_public(kept, emit)
+                    emit({"t": "done"})
+            finally:
+                stop.set()
 
     return ThreadingHTTPServer((host, port), H)
 
@@ -483,9 +675,10 @@ def main():
     if a.serve:
         if not a.auto_approve:
             sys.exit("--serve needs --auto-approve (no TTY for y/N prompts)")
-        if a.host != "127.0.0.1" and not os.environ.get("HARNESS_TOKEN") and os.environ.get("HARNESS_OPEN") != "1":
-            sys.exit("--host other than 127.0.0.1 requires HARNESS_TOKEN (endpoint runs shell commands); "
-                     "set HARNESS_OPEN=1 to run it open on purpose")
+        if not auth.enabled():
+            print("sign-in is OFF (set HARNESS_SESSION_KEY, 16+ characters): everybody is a public visitor", file=sys.stderr)
+        if not os.environ.get("HARNESS_TOKEN"):
+            print("/task is OFF (set HARNESS_TOKEN to enable it)", file=sys.stderr)
         print(f"serving on {a.host}:{a.serve}", file=sys.stderr)
         return make_server(a.host, a.serve, ws, a.max_turns).serve_forever()
     conn = db.connect()

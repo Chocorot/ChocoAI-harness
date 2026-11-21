@@ -1,0 +1,6 @@
+test_harness.py
+workspace/
+harness.db*
+.git/
+.env
+__pycache__/

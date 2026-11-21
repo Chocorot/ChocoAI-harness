@@ -75,8 +75,15 @@ def run_bash(ws, command, timeout=30, auto_approve=False):
     return f"exit={r.returncode}\nstdout:\n{r.stdout[:LIMIT]}\nstderr:\n{r.stderr[:LIMIT]}"
 
 
-def run(name, args, ws, auto_approve=False):
+def schemas_for(names):
+    return [s for s in SCHEMAS if s["function"]["name"] in names]
+
+
+def run(name, args, ws, auto_approve=False, allow=None):
+    """`allow`: the tool names this caller may use (auth.MODES). Enforced here as well as in the schemas sent to the model."""
     ws = Path(ws)
+    if allow is not None and name not in allow:
+        return err("forbidden", f"tool {name} is not available here", "use only the listed tools")
     handlers = {"read_file": read_file, "edit_file": edit_file, "write_file": write_file}
     if name != "run_bash" and name not in handlers:
         return err("unknown_tool", f"unknown tool {name}", "use only the listed tools")

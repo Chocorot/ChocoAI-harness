@@ -7,6 +7,7 @@ Python 3.11+ standard library only. About 35 MB RSS idle. State lives in one SQL
 |---|---|
 | `harness.py` | CLI, agent loop, streaming, context compaction, optional HTTP mode |
 | `tools.py` | The 4 tools (`read_file`, `edit_file`, `write_file`, `run_bash`) and their JSON schemas |
+| `auth.py` | Sign-in with the DMS mailbox (IMAP), signed cookie, the modes table, throttles, per-user storage paths ([docs/auth-and-modes.md](docs/auth-and-modes.md), [docs/storage-isolation.md](docs/storage-isolation.md)) |
 | `errors.py` | The table of failure kinds: what the user sees, what the model is told, what is retried ([docs/errors.md](docs/errors.md)) |
 | `runq.py` | Bounded run queue: one run at a time, the rest wait in line ([docs/chat-streaming.md](docs/chat-streaming.md)) |
 | `index.html` | Chat web page served at `/` (HTML+JS, no build step) |
@@ -67,9 +68,9 @@ Events, the queue and keepalive: [docs/chat-streaming.md](docs/chat-streaming.md
 [docs/errors.md](docs/errors.md).
 
 One agent run at a time (others wait in a line of at most `max_queue`, then get a `busy` answer; `/health` and `/` stay responsive). `/task` executes shell commands. Set `HARNESS_TOKEN` and send
-`-H "Authorization: Bearer $HARNESS_TOKEN"` on `/task` (`/health` stays open). Binding to any host other
-than 127.0.0.1 (as the Docker image does) refuses to start without `HARNESS_TOKEN` unless you set `HARNESS_OPEN=1` (deliberately unauthenticated: anyone who can reach it can run commands in the container). For a public hostname
-(e.g. a Cloudflare tunnel) also consider Cloudflare Access in front.
+`-H "Authorization: Bearer $HARNESS_TOKEN"` on `/task` (`/health` stays open). `/task` does not exist (404) unless `HARNESS_TOKEN` is set, so there is no way to run it open by accident (`HARNESS_OPEN` was removed in v0.4.0).
+Visitors and signed-in users use `/api/*` instead: visitors chat with no tools, signed-in users (any DMS mailbox, `HARNESS_SESSION_KEY` set) get saved chats in their own DB and workspace, and `HARNESS_SHELL_USERS` also get the shell.
+See [docs/auth-and-modes.md](docs/auth-and-modes.md). The page served at `/` is still the old one and only knows `/task` with a token; the new app UI is phase 4 of the rework.
 
 ## Settings and the manage API (for the status dashboard)
 
@@ -137,4 +138,4 @@ Inspect the DB: `sqlite3 harness.db "select tool, result from audit order by id 
 - Token counts are estimates. If the real window is exceeded the harness shrinks the history once and retries; if that is not enough you get a `context_overflow` error (lower the `compact_at` setting).
 - Transient backend errors are retried (`retries` setting). Anything else stops the run, saves a failure note in the session and tells the user why; resume with `--session` or `{"retry": true}`.
 - Thinking is shown only when the backend sends `reasoning_content`; it is never stored in history.
-- `/task` runs shell commands: never run it open on a public hostname. Set `HARNESS_TOKEN` (the 2026-11-20 server fix) and consider Cloudflare Access in front.
+- `/task` and the shell users run shell commands as the container user: not a sandbox, and shell users can read other users' files. Keep `HARNESS_TOKEN` secret and `HARNESS_SHELL_USERS` short.

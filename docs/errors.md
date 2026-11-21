@@ -18,7 +18,9 @@ Tests: `ErrorTests`, `CallModelTests`, `FailureMemoryTests`, `ServerErrorTests` 
 | upstream_bad_stream | garbled or cut-off reply | yes | yes |
 | context_overflow | prompt does not fit the window | shrinks once | no |
 | busy | run queue full | no | yes |
-| bad_request / not_found / auth | client mistakes (400 / 404 / 401) | no | no |
+| rate_limited | too many requests / sign-in attempts (429) | no | yes |
+| login_unavailable | mail server can't be asked (503) | no | yes |
+| bad_request / not_found / auth / forbidden | client mistakes (400 / 404 / 401 / 403) | no | no |
 | internal | bug in the harness | no | yes |
 
 The backend's own HTTP error body is read (bounded) and kept in `detail`; context overflow is recognised from it (`errors.OVERFLOW`).
@@ -30,7 +32,7 @@ The backend's own HTTP error body is read (bounded) and kept in `detail`; contex
 - Tool failures stay in the stream as `result` events with `ok:false`.
 
 ## What the model sees
-- Tool errors have one shape: `error[code]: what happened. hint` (`tools.err`). Codes: `edit_mismatch`, `denied`, `timeout`, `unknown_tool`, `bad_args`, `not_found`, `permission`, `invalid`, `tool_failed`, `interrupted`.
+- Tool errors have one shape: `error[code]: what happened. hint` (`tools.err`). Codes: `edit_mismatch`, `denied`, `timeout`, `unknown_tool`, `forbidden`, `bad_args`, `not_found`, `permission`, `invalid`, `tool_failed`, `interrupted`.
 - When a run fails, a note is saved in the session as an assistant message: `[run failed: kind/code] message hint`. The next turn sees it and can adapt (for example do a smaller step after a timeout).
 - `{"session": id, "retry": true}` (no new goal) removes that note and continues where it stopped.
 - A crash between a tool call and its result leaves an orphan call, which backends reject. `repair_tail` adds stub results (`error[interrupted]`) on resume and before the failure note. Only the tail is repaired: orphans in the middle of very old sessions are not.
@@ -43,7 +45,7 @@ The backend's own HTTP error body is read (bounded) and kept in `detail`; contex
 ## Catch-all and logging
 - `_guard` wraps every request: whatever fails becomes a typed reply, JSON or an SSE error event. The socket is never closed silently.
 - Bad JSON, bad types, missing or oversize body (1 MB): 400 `bad_request`. Unknown session: 404 before any stream opens.
-- Server errors are logged as one JSON line on stderr and stored in the `errors` table (newest 200). Client mistakes (auth, not_found, bad_request, busy) are not logged.
+- Server errors are logged as one JSON line on stderr and stored in the `errors` table (newest 200). Client mistakes (auth, not_found, bad_request, busy, forbidden, rate_limited) are not logged.
 - `GET /manage/errors?limit=N` (admin token) returns them; `/manage/manifest` `stats.errors` is the count.
 
 ## Known gaps

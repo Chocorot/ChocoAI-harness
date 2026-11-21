@@ -63,6 +63,13 @@ def list_errors(db, limit=50):
     return [dict(zip(("ts", "rid", "session", "kind", "code", "message", "detail"), r)) for r in rows]
 
 
+def delete_session(db, sid):
+    for table in ("messages", "usage", "audit"):
+        db.execute(f"DELETE FROM {table} WHERE session=?", (sid,))
+    db.execute("DELETE FROM sessions WHERE id=?", (sid,))
+    db.commit()
+
+
 def log_usage(db, sid, turn, prompt, completion, est):
     db.execute("INSERT INTO usage(session, turn, prompt_tokens, completion_tokens, est_tokens)"
                " VALUES(?,?,?,?,?)", (sid, turn, prompt, completion, est))

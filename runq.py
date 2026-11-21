@@ -20,12 +20,12 @@ class RunQueue:
         return not self._running and min(self._waiting) == ticket
 
     @contextlib.contextmanager
-    def slot(self, prio=1, on_wait=None, tick=10):
+    def slot(self, prio=1, on_wait=None, tick=10, limit=None):
         """Wait for the model. `on_wait(runs_ahead)` is called at once and then every `tick` seconds while waiting;
-        it may raise to leave the line."""
+        it may raise to leave the line. `limit` overrides the line length for this caller (public gets a shorter line)."""
         ticket = (prio, next(self._seq))
         with self._cv:
-            if (self._running or self._waiting) and len(self._waiting) >= self._limit():  # an idle queue never refuses
+            if (self._running or self._waiting) and len(self._waiting) >= (self._limit() if limit is None else limit):  # an idle queue never refuses
                 raise HarnessError("busy")
             self._waiting.append(ticket)
         try:

@@ -1,4 +1,4 @@
-# Server copy lives in ~/ChocoAI-harness/ next to its .env (HARNESS_OPEN / HARNESS_TOKEN, BASE_URL, API_KEY, MODEL).
+# Server copy lives in ~/ChocoAI-harness/ next to its .env (BASE_URL, API_KEY, MODEL, HARNESS_TOKEN, HARNESS_SESSION_KEY, HARNESS_SHELL_USERS, HARNESS_TRUST_PROXY=1, see docs/auth-and-modes.md).
 services:
   harness:
     container_name: choco-harness

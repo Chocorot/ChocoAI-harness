@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
+import auth
 import db
 import errors
 import harness
@@ -143,7 +144,7 @@ class AgentTests(unittest.TestCase):
 
 class ServerTests(unittest.TestCase):
     def test_page_auth_and_stream(self):
-        def fake_chat(messages, emit):
+        def fake_chat(messages, emit, *rest):
             emit({"t": "think", "d": "hmm"})
             emit({"t": "text", "d": "hi"})
             return {"role": "assistant", "content": "hi"}, {}
@@ -351,7 +352,7 @@ def http_err(code, body):
 
 
 def boom(kind="upstream_down"):
-    def chat_fn(messages, emit):
+    def chat_fn(messages, emit, *rest):
         raise errors.HarnessError(kind)
     return chat_fn
 
@@ -556,10 +557,11 @@ class ServerErrorTests(SettingsBase):
     def setUp(self):
         super().setUp()
         settings.save({"retries": 0})
+        os.environ["HARNESS_TOKEN"] = "tok"  # /task exists only with a token (the env patch in SettingsBase undoes this)
         self.real = harness.chat
         self.addCleanup(lambda: setattr(harness, "chat", self.real))
 
-    def post(self, base, body, token=None, raw=None):
+    def post(self, base, body, token="tok", raw=None):
         req = urllib.request.Request(base + "/task", raw if raw is not None else json.dumps(body).encode(),
                                      {"Authorization": f"Bearer {token}"} if token else {})
         try:
@@ -601,16 +603,16 @@ class ServerErrorTests(SettingsBase):
         self.assertEqual([e["t"] for e in evs], ["session", "status", "error"])
         err = evs[-1]
         self.assertEqual((err["kind"], err["retryable"], err["d"] == err["msg"]), ("upstream_5xx", True, True))
-        harness.chat = lambda m, emit: ({"role": "assistant", "content": "fine"}, {})
+        harness.chat = lambda m, emit, *a: ({"role": "assistant", "content": "fine"}, {})
         status, body = self.post(base, {"session": evs[0]["id"], "retry": True})
         self.assertEqual((status, json.loads(body)["reply"]), (200, "fine"))
         sent = []
-        harness.chat = lambda m, emit: (sent.append(m), ({"role": "assistant", "content": "ok"}, {}))[1]
+        harness.chat = lambda m, emit, *a: (sent.append(m), ({"role": "assistant", "content": "ok"}, {}))[1]
         self.post(base, {"session": evs[0]["id"], "goal": "again"})
         self.assertFalse(any((m.get("content") or "").startswith(errors.NOTE_PREFIX) for m in sent[0]))  # retry removed the note
 
     def test_unexpected_exception_still_gets_a_reply(self):
-        def explode(m, emit):
+        def explode(m, emit, *a):
             raise KeyError("bug")
         harness.chat = explode
         base = self.serve()
@@ -620,7 +622,7 @@ class ServerErrorTests(SettingsBase):
     def test_busy_queued_and_keepalive(self):
         gate, started = threading.Event(), threading.Event()
 
-        def slow(m, emit):
+        def slow(m, emit, *a):
             started.set()
             gate.wait(5)
             return {"role": "assistant", "content": "slow"}, {}
@@ -645,6 +647,298 @@ class ServerErrorTests(SettingsBase):
         self.assertEqual(evs[0], {"t": "queued", "pos": 1})
         self.assertEqual(evs[-1], {"t": "done"})
         self.assertIn(": ka", raw)  # keepalive comments while waiting
+
+
+class AuthUnitTests(unittest.TestCase):
+    def setUp(self):
+        env = mock.patch.dict(os.environ, {"HARNESS_SESSION_KEY": "k" * 32})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def test_cookie_roundtrip_tamper_expiry(self):
+        c = auth.make_cookie("a@example.com")
+        self.assertEqual(auth.read_cookie(c), "a@example.com")
+        data, sig = c.split(".")
+        for bad in (c + "x", data + ".AAAA", "x." + sig, "", "nodot", data + "." + sig[::-1]):
+            self.assertIsNone(auth.read_cookie(bad), bad)
+        self.assertIsNone(auth.read_cookie(auth.make_cookie("a@example.com", now=time.time() - auth.MAX_AGE - 5)))  # expired
+        os.environ["HARNESS_SESSION_KEY"] = "z" * 32  # another key can't read it
+        self.assertIsNone(auth.read_cookie(c))
+        os.environ["HARNESS_SESSION_KEY"] = "short"  # a too-short key disables sign-in altogether
+        self.assertFalse(auth.enabled())
+        self.assertIsNone(auth.read_cookie(c))
+
+    def test_input_checks(self):
+        self.assertEqual(auth.normalize("  Alice@Example.COM "), "alice@example.com")
+        for bad in ("", None, 5, "a@b", "a b@example.com", "a@example.com\r\nRCPT", "x" * 300 + "@example.com", "@example.com"):
+            with self.assertRaises(errors.HarnessError):
+                auth.normalize(bad)
+        for bad in ("", None, "x" * 257, "pw\nINJECT"):
+            with self.assertRaises(errors.HarnessError):
+                auth.check_password(bad)
+
+    def test_throttle_window(self):
+        th = auth.Throttle()
+        self.assertEqual([th.allow("k", 2, 60) for _ in range(3)], [True, True, False])
+        self.assertTrue(th.allow("other", 2, 60))
+        th.hits["k"][0] -= 61  # the oldest hit ages out of the window
+        self.assertTrue(th.allow("k", 2, 60))
+
+    def test_mode_table_and_shell_list(self):
+        with mock.patch.dict(os.environ, {"HARNESS_SHELL_USERS": " Root@example.com , x@y.org"}):
+            self.assertEqual((auth.mode_for("root@example.com"), auth.mode_for("alice@example.com")), ("user+shell", "user"))
+        self.assertEqual(auth.MODES["public"]["tools"], [])  # visitors never get tools
+        self.assertNotIn("run_bash", auth.MODES["user"]["tools"])
+        self.assertIn("run_bash", auth.MODES["user+shell"]["tools"])
+
+
+class FakeModel:
+    """Stands in for harness.chat: records every call, replays scripted replies (text or a full message)."""
+
+    def __init__(self, *replies):
+        self.replies, self.calls = list(replies), []
+
+    def __call__(self, messages, emit, schemas=None, max_tokens=None):
+        self.calls.append({"messages": messages, "schemas": schemas, "max_tokens": max_tokens})
+        r = self.replies.pop(0) if self.replies else "ok"
+        if isinstance(r, dict):
+            return r, {}
+        emit({"t": "text", "d": r})
+        return {"role": "assistant", "content": r}, {}
+
+
+def bash_call(command):
+    return {"role": "assistant", "content": None, "tool_calls": [{"id": "1", "type": "function", "function": {
+        "name": "run_bash", "arguments": json.dumps({"command": command})}}]}
+
+
+PASSWORDS = {"alice@example.com": "pw-a", "bob@example.com": "pw-b", "root@example.com": "pw-r"}
+
+
+class ModesTests(SettingsBase):
+    def setUp(self):
+        super().setUp()
+        os.environ.update(HARNESS_SESSION_KEY="k" * 32, HARNESS_SHELL_USERS="root@example.com", HARNESS_TOKEN="tok")
+        for k in ("HARNESS_TRUST_PROXY", "HARNESS_INSECURE_COOKIES"):
+            os.environ.pop(k, None)
+        settings.save({"retries": 0})
+        patches = [mock.patch.object(auth, "verify_password", lambda a, p: PASSWORDS.get(a) == p),
+                   mock.patch.object(harness, "chat", FakeModel())]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.model = harness.chat
+        srv = harness.make_server("127.0.0.1", 0, Path(self.t.name) / "ws", None)
+        threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        self.base = f"http://127.0.0.1:{srv.server_address[1]}"
+        self.ws = Path(self.t.name) / "ws"
+
+    def http(self, method, path, body=None, cookie=None, headers=None):
+        h = {**(headers or {}), **({"Cookie": f"{auth.COOKIE}={cookie}"} if cookie else {})}
+        req = urllib.request.Request(self.base + path, None if body is None else json.dumps(body).encode(), h, method=method)
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.read().decode(), r.headers
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, e.read().decode(), e.headers
+
+    def api(self, method, path, body=None, cookie=None, headers=None):
+        status, raw, hdrs = self.http(method, path, body, cookie, headers)
+        return status, json.loads(raw), hdrs
+
+    def login(self, who):
+        status, body, hdrs = self.api("POST", "/api/login", {"email": who, "password": PASSWORDS[who]})
+        self.assertEqual(status, 200, body)
+        return hdrs["Set-Cookie"].split(";")[0].split("=", 1)[1]
+
+    def stream(self, path, body, cookie=None):
+        status, raw, _ = self.http("POST", path, body, cookie)
+        return status, [json.loads(x[5:]) for x in raw.split("\n\n") if x.startswith("data:")]
+
+    # ---- sign-in ----
+    def test_login_cookie_flags_and_me(self):
+        status, body, hdrs = self.api("POST", "/api/login", {"email": "Alice@Example.com", "password": "pw-a"})
+        cookie = hdrs["Set-Cookie"]
+        self.assertEqual((status, body["address"], body["mode"]), (200, "alice@example.com", "user"))
+        for flag in ("HttpOnly", "SameSite=Lax", "Secure", "Path=/"):
+            self.assertIn(flag, cookie)
+        self.assertNotIn("pw-a", cookie)  # the mail password is never stored anywhere
+        me = self.api("GET", "/api/me", cookie=cookie.split(";")[0].split("=", 1)[1])[1]
+        self.assertEqual((me["mode"], me["address"], me["capabilities"]["shell"], me["capabilities"]["history"]), ("user", "alice@example.com", False, "user"))
+        me = self.api("GET", "/api/me")[1]
+        self.assertEqual((me["mode"], me["address"], me["capabilities"]["tools"], me["capabilities"]["login"]), ("public", None, [], True))
+        me = self.api("GET", "/api/me", cookie=self.login("root@example.com"))[1]
+        self.assertEqual((me["mode"], me["capabilities"]["shell"]), ("user+shell", True))
+        me = self.api("GET", "/api/me", headers={"Authorization": "Bearer tok"})[1]
+        self.assertEqual(me["mode"], "admin")
+        me = self.api("GET", "/api/me", cookie="forged.value")[1]  # a bad cookie is just a visitor
+        self.assertEqual(me["mode"], "public")
+
+    def test_wrong_password_unknown_user_same_answer_and_lockout(self):
+        a = self.api("POST", "/api/login", {"email": "alice@example.com", "password": "nope"})
+        b = self.api("POST", "/api/login", {"email": "ghost@example.com", "password": "nope"})
+        self.assertEqual((a[0], b[0]), (401, 401))
+        self.assertEqual(a[1]["error"], b[1]["error"])  # can't tell which mailboxes exist
+        for _ in range(4):  # 5 wrong attempts for alice in total
+            self.api("POST", "/api/login", {"email": "alice@example.com", "password": "nope"})
+        status, body, _ = self.api("POST", "/api/login", {"email": "alice@example.com", "password": "pw-a"})
+        self.assertEqual((status, body["kind"]), (429, "rate_limited"))  # even the right password waits
+
+    def test_login_input_origin_and_availability(self):
+        self.assertEqual(self.api("POST", "/api/login", {"email": "nope", "password": "x"})[0], 400)
+        self.assertEqual(self.api("POST", "/api/login", {"email": "alice@example.com"})[0], 400)
+        status, body, _ = self.api("POST", "/api/login", {"email": "alice@example.com", "password": "pw-a"},
+                                   headers={"Origin": "https://evil.example"})
+        self.assertEqual((status, body["kind"]), (403, "forbidden"))
+        with mock.patch.object(auth, "verify_password", side_effect=errors.HarnessError("login_unavailable")):
+            self.assertEqual(self.api("POST", "/api/login", {"email": "alice@example.com", "password": "x"})[0], 503)
+        os.environ.pop("HARNESS_SESSION_KEY")
+        self.assertEqual(self.api("POST", "/api/login", {"email": "alice@example.com", "password": "pw-a"})[0], 404)
+        self.assertFalse(self.api("GET", "/api/me")[1]["capabilities"]["login"])
+
+    def test_logout_clears_cookie(self):
+        _, _, hdrs = self.api("POST", "/api/logout")
+        self.assertIn("Max-Age=0", hdrs["Set-Cookie"])
+
+    # ---- public visitors ----
+    def test_public_chat_has_no_tools_no_storage_and_a_reply_cap(self):
+        status, evs = self.stream("/api/chat", {"messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"},
+                                                           {"role": "user", "content": "again", "evil": 1}]})
+        self.assertEqual(status, 200)
+        self.assertEqual([e["t"] for e in evs if e["t"] != "status"], ["text", "done"])
+        call = self.model.calls[0]
+        self.assertEqual((call["schemas"], call["max_tokens"]), ([], 1024))  # no tools offered, reply capped
+        self.assertEqual([m["role"] for m in call["messages"]], ["system", "user", "assistant", "user"])
+        self.assertEqual(call["messages"][0]["content"], settings.get("public_prompt"))
+        self.assertNotIn("evil", call["messages"][-1])
+        self.assertFalse((Path(self.t.name) / "users").exists())  # nothing stored server side
+        self.assertEqual(db.stats(db.connect())["sessions"], 0)
+        body = {"messages": [{"role": "user", "content": "hi"}], "stream": False}  # public chat always streams
+        self.assertEqual(self.http("POST", "/api/chat", body)[1][:5], "data:")
+
+    def test_public_validation_trim_and_rate_limit(self):
+        bad = [{}, {"messages": []}, {"messages": "x"}, {"messages": [{"role": "system", "content": "x"}]},
+               {"messages": [{"role": "user", "content": " "}]}, {"messages": [{"role": "assistant", "content": "x"}]},
+               {"messages": [{"role": "user", "content": 5}]}, {"messages": ["x"]}]
+        for body in bad:
+            status, raw, _ = self.http("POST", "/api/chat", body)
+            self.assertEqual((status, json.loads(raw)["kind"]), (400, "bad_request"), body)
+        settings.save({"public_max_chars": 500})
+        self.assertEqual(self.api("POST", "/api/chat", {"messages": [{"role": "user", "content": "x" * 501}]})[0], 400)
+        long = [{"role": "user" if i % 2 == 0 else "assistant", "content": "y" * 200} for i in range(9)] + [{"role": "user", "content": "last"}]
+        kept, dropped = harness.trim_history(long, 500)
+        self.assertEqual((kept[0]["role"], kept[-1]["content"], dropped > 0, sum(len(m["content"]) for m in kept) <= 500), ("user", "last", True, True))
+        _, evs = self.stream("/api/chat", {"messages": long})
+        self.assertEqual(evs[0]["t"], "trimmed")
+        settings.save({"public_rpm": 3})  # one request above already counted for this IP
+        codes = [self.http("POST", "/api/chat", {"messages": [{"role": "user", "content": "hi"}]})[0] for _ in range(3)]
+        self.assertEqual(codes, [200, 200, 429])
+
+    def test_public_failure_event_carries_the_note_for_the_page(self):
+        harness.chat = boom("upstream_down")
+        _, evs = self.stream("/api/chat", {"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual((evs[-1]["t"], evs[-1]["kind"], evs[-1]["retryable"]), ("error", "upstream_down", True))
+        self.assertTrue(evs[-1]["note"].startswith(errors.NOTE_PREFIX))
+
+    def test_public_cannot_touch_user_endpoints_or_task(self):
+        self.assertEqual(self.api("GET", "/api/sessions")[0], 401)
+        self.assertEqual(self.api("GET", "/api/sessions/1")[0], 401)
+        self.assertEqual(self.api("DELETE", "/api/sessions/1")[0], 401)
+        self.assertEqual(self.api("POST", "/task", {"goal": "x"})[0], 401)  # no bearer
+        self.assertEqual(self.api("POST", "/task", {"goal": "x"}, cookie=self.login("root@example.com"))[0], 401)  # a cookie is not a bearer
+
+    def test_task_does_not_exist_without_a_token(self):
+        os.environ.pop("HARNESS_TOKEN")
+        self.assertEqual(self.api("POST", "/task", {"goal": "x"})[0], 404)
+
+    def test_public_waits_in_a_shorter_line_than_users(self):
+        gate, started = threading.Event(), threading.Event()
+
+        def slow(messages, emit, *rest):
+            started.set()
+            gate.wait(5)
+            return {"role": "assistant", "content": "x"}, {}
+        harness.chat = slow
+        alice = self.login("alice@example.com")
+        th = threading.Thread(target=self.stream, args=("/api/chat", {"goal": "a"}, alice))
+        th.start()
+        self.assertTrue(started.wait(2))
+        settings.save({"max_queue_public": 0})
+        _, evs = self.stream("/api/chat", {"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual((evs[-1]["t"], evs[-1]["kind"]), ("error", "busy"))  # visitors are turned away first
+        gate.set()
+        th.join(3)
+
+    # ---- signed-in users and isolation ----
+    def test_user_chat_is_stored_in_their_own_db_and_workspace(self):
+        alice = self.login("alice@example.com")
+        status, evs = self.stream("/api/chat", {"goal": "hello"}, alice)
+        sid = evs[0]["id"]
+        self.assertEqual((status, evs[0]["t"], evs[-1]["t"]), (200, "session", "done"))
+        self.assertEqual([t["function"]["name"] for t in self.model.calls[0]["schemas"]], ["read_file", "edit_file", "write_file"])
+        self.assertTrue((self.ws / "users" / auth.uid("alice@example.com") / str(sid)).is_dir())
+        self.assertEqual(db.stats(db.connect())["sessions"], 0)  # not in the original DB
+        listing = self.api("GET", "/api/sessions", cookie=alice)[1]["sessions"]
+        self.assertEqual([(s["id"], s["goal"]) for s in listing], [(sid, "hello")])
+        msgs = self.api("GET", f"/api/sessions/{sid}", cookie=alice)[1]["messages"]
+        self.assertEqual([(m["role"], m["content"]) for m in msgs], [("user", "hello"), ("assistant", "ok")])  # system prompt hidden
+        # resume works for the owner
+        status, evs = self.stream("/api/chat", {"session": sid, "goal": "more"}, alice)
+        self.assertEqual(evs[-1]["t"], "done")
+        self.assertEqual(len(self.api("GET", f"/api/sessions/{sid}", cookie=alice)[1]["messages"]), 4)
+
+    def test_users_cannot_see_touch_or_resume_each_others_sessions(self):
+        alice, bob = self.login("alice@example.com"), self.login("bob@example.com")
+        sid = self.stream("/api/chat", {"goal": "alice secret"}, alice)[1][0]["id"]
+        # bob has no session with that id: everything is a plain 404, indistinguishable from "never existed"
+        self.assertEqual(self.api("GET", f"/api/sessions/{sid}", cookie=bob)[0], 404)
+        self.assertEqual(self.api("DELETE", f"/api/sessions/{sid}", cookie=bob)[0], 404)
+        status, raw, _ = self.http("POST", "/api/chat", {"session": sid, "goal": "x", "stream": False}, bob)
+        self.assertEqual((status, json.loads(raw)["kind"]), (404, "not_found"))
+        self.assertEqual(self.api("GET", "/api/sessions", cookie=bob)[1]["sessions"], [])
+        # same numeric id in both accounts: each sees only their own content
+        bsid = self.stream("/api/chat", {"goal": "bob thing"}, bob)[1][0]["id"]
+        self.assertEqual(bsid, sid)
+        mine = self.api("GET", f"/api/sessions/{sid}", cookie=bob)[1]["messages"]
+        self.assertEqual(mine[0]["content"], "bob thing")
+        self.assertEqual(self.api("GET", f"/api/sessions/{sid}", cookie=alice)[1]["messages"][0]["content"], "alice secret")
+        # physically separate files
+        pa, pb = auth.db_path("alice@example.com"), auth.db_path("bob@example.com")
+        self.assertNotEqual(pa, pb)
+        self.assertEqual(db.load(db.connect(pb), sid)[1]["content"], "bob thing")
+        # bob's delete of his own removes only his rows and directory
+        self.assertEqual(self.api("DELETE", f"/api/sessions/{sid}", cookie=bob)[0], 200)
+        self.assertFalse((self.ws / "users" / auth.uid("bob@example.com") / str(sid)).exists())
+        self.assertTrue((self.ws / "users" / auth.uid("alice@example.com") / str(sid)).exists())
+        self.assertEqual(self.api("GET", f"/api/sessions/{sid}", cookie=alice)[0], 200)
+
+    def test_forged_or_foreign_cookie_is_just_a_visitor(self):
+        alice = self.login("alice@example.com")
+        data, sig = alice.split(".")
+        import base64
+        forged = base64.urlsafe_b64encode(json.dumps({"a": "bob@example.com", "e": int(time.time()) + 999}).encode()).rstrip(b"=").decode()
+        self.assertEqual(self.api("GET", "/api/sessions", cookie=f"{forged}.{sig}")[0], 401)
+
+    def test_shell_only_for_allowlisted_users(self):
+        alice, root = self.login("alice@example.com"), self.login("root@example.com")
+        harness.chat = self.model = FakeModel(bash_call("echo hi"), "done")
+        _, evs = self.stream("/api/chat", {"goal": "run it"}, alice)
+        res = [e for e in evs if e["t"] == "result"][0]
+        self.assertEqual(res["ok"], False)
+        self.assertIn("error[forbidden]", res["d"])  # enforced even though the model asked for it anyway
+        harness.chat = self.model = FakeModel(bash_call("echo hi"), "done")
+        _, evs = self.stream("/api/chat", {"goal": "run it"}, root)
+        res = [e for e in evs if e["t"] == "result"][0]
+        self.assertEqual((res["ok"], "stdout:\nhi" in res["d"]), (True, True))
+        self.assertIn("run_bash", [t["function"]["name"] for t in self.model.calls[0]["schemas"]])
+
+    def test_task_with_bearer_still_works_on_the_original_db(self):
+        harness.chat = FakeModel("legacy ok")
+        status, raw, _ = self.http("POST", "/task", {"goal": "x"}, headers={"Authorization": "Bearer tok"})
+        self.assertEqual((status, json.loads(raw)["reply"]), (200, "legacy ok"))
+        self.assertEqual(db.stats(db.connect())["sessions"], 1)
 
 
 if __name__ == "__main__":

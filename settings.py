@@ -17,6 +17,11 @@ SYSTEM_PROMPT = (
     "when done, reply with a brief summary and call no tools."
 )
 
+PUBLIC_PROMPT = (
+    "You are a friendly, concise assistant on a public website. You cannot browse the web, run code or use tools. "
+    "If asked to, say so briefly. Do not claim to remember earlier visits."
+)
+
 # type: string | text | int | float. `env`: an environment variable that supplies the default when set.
 # `optional`: the default is "not sent to the backend". A null value resets a field to its default.
 FIELDS = [
@@ -34,6 +39,16 @@ FIELDS = [
      "help": "How often a run silently retries when the model server is down, errors or garbles a reply (waits 2s, 6s, 15s)."},
     {"key": "max_queue", "label": "Max runs waiting in line", "type": "int", "default": 8, "min": 0, "max": 100,
      "help": "One run executes at a time. More waiting than this gets a 'busy' answer."},
+    {"key": "public_prompt", "label": "Public chat prompt", "type": "text", "default": PUBLIC_PROMPT, "min": 1, "max": 4000,
+     "help": "System prompt for visitors who are not signed in (chat only, no tools)."},
+    {"key": "public_rpm", "label": "Public requests per minute (per IP)", "type": "int", "default": 6, "min": 1, "max": 600,
+     "help": "Visitors above this get a 'too many requests' answer."},
+    {"key": "max_queue_public", "label": "Public visitors allowed to wait", "type": "int", "default": 2, "min": 0, "max": 100,
+     "help": "Public visitors are refused (busy) when this many are already waiting, so signed-in users still get in."},
+    {"key": "public_max_chars", "label": "Public history size (characters)", "type": "int", "default": 24000, "min": 500, "max": 200000,
+     "help": "Older messages of a public chat are dropped above this size. The window is 16K tokens."},
+    {"key": "public_max_tokens", "label": "Public max reply tokens", "type": "int", "default": 1024, "min": 16, "max": 32768,
+     "help": "Caps the length of a public reply so one visitor can't hold the model for minutes."},
     {"key": "temperature", "label": "Temperature", "type": "float", "default": None, "optional": True, "min": 0, "max": 2,
      "help": "Empty = backend default."},
     {"key": "max_tokens", "label": "Max reply tokens", "type": "int", "default": None, "optional": True, "min": 16, "max": 131072,
