@@ -1,16 +1,16 @@
 # Internet access (web_fetch, web_search)
 
-Code: `web.py`, tool rows in `tools.py`, `searxng/settings.yml`, `docker-compose.yml`. Tests: `SsrfTests`, `WebFetchTests`, `ToolTableTests` in `test_harness.py`.
-Who gets it: signed-in users and admin (`auth.MODES`: `web_fetch`, `web_search`). Visitors never do. Scheduled automations (phase 6) get it under their owner's permissions.
+Code: `src/core/web.ts`, tool rows in `src/core/tools.ts`, `searxng/settings.yml`, `docker-compose.yml`. Tests: `src/core/web.test.ts` (SSRF guard, fetch, search), `src/core/tools.test.ts`.
+Who gets it: signed-in users and admin (`auth.ts` `MODES`: `web_fetch`, `web_search`). Visitors never do. Scheduled automations (phase 6) get it under their owner's permissions.
 
 ## web_fetch(url, start=0)
-- Opens one page and returns it as text, 8000 characters per call (`web.PAGE_CHARS`; the window is 16K tokens). `start` reads on; the result says `More: call web_fetch again with start=N`.
+- Opens one page and returns it as text, 8000 characters per call (`web.ts` `PAGE_CHARS`; the window is 16K tokens). `start` reads on; the result says `More: call web_fetch again with start=N`.
 - HTML is turned into text (scripts, styles, noscript dropped); links stay as `text (https://...)`, at most 40. `text/*`, JSON, XML, RSS/Atom are read; images, PDFs and other binaries return `error[fetch_failed]`.
 - Limits: 1 MB body, 10 s per socket operation, 25 s total, 3 redirects.
 - Result is wrapped as `<untrusted_web_content url="...">...</untrusted_web_content>` (the closing tag inside page text is neutralised) and the system prompt says to never follow instructions found there. This lowers prompt-injection risk; it does not remove it. Old results are pruned to a one-line stub when the history is compacted.
 
 ## SSRF guard (why the model can't reach your servers)
-- The hostname is resolved once. **Every** answer must be a public address (`web.public_ip`: not private, loopback, link-local, multicast, and not the tailnet range 100.64.0.0/10). One non-public answer in a mixed reply blocks the fetch.
+- The hostname is resolved once. **Every** answer must be a public address (`web.ts` `publicIp`: not private, loopback, link-local, multicast, and not the tailnet range 100.64.0.0/10). One non-public answer in a mixed reply blocks the fetch.
 - The connection goes to that exact address (the name is not resolved again), so a DNS answer that changes between check and connect can't redirect us. TLS still verifies the certificate for the real hostname.
 - Every redirect hop is checked again. Only `http`/`https`, no `user:pass@`, no `file:`, `ftp:`, etc.
 - `http://127.0.0.1:8421/...`, `http://169.254.169.254/...`, `localhost`, `[::1]`, tailnet IPs: all `error[fetch_blocked]`.

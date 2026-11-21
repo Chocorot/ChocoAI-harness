@@ -1,0 +1,105 @@
+{
+ "constants": {
+  "MAX_BYTES": 1000000,
+  "MAX_REDIRECTS": 3,
+  "PAGE_CHARS": 8000,
+  "WRAP": "untrusted_web_content"
+ },
+ "public_ip": [
+  [
+   "8.8.8.8",
+   true
+  ],
+  [
+   "1.1.1.1",
+   true
+  ],
+  [
+   "10.0.0.1",
+   false
+  ],
+  [
+   "127.0.0.1",
+   false
+  ],
+  [
+   "169.254.169.254",
+   false
+  ],
+  [
+   "100.64.0.1",
+   false
+  ],
+  [
+   "100.100.1.1",
+   false
+  ],
+  [
+   "192.168.1.1",
+   false
+  ],
+  [
+   "::1",
+   false
+  ],
+  [
+   "fe80::1",
+   false
+  ],
+  [
+   "fc00::1",
+   false
+  ],
+  [
+   "2606:4700::1111",
+   true
+  ],
+  [
+   "::ffff:127.0.0.1",
+   false
+  ],
+  [
+   "::ffff:8.8.8.8",
+   true
+  ],
+  [
+   "224.0.0.1",
+   false
+  ],
+  [
+   "0.0.0.0",
+   false
+  ],
+  [
+   "172.16.0.1",
+   false
+  ],
+  [
+   "93.184.216.34",
+   true
+  ]
+ ],
+ "to_text": [
+  [
+   "text/html",
+   "T\n\nHead\n\nPara link (https://site.test/rel) and abs (https://ex.com/x)m\n\none\n\ntwo\n\na b"
+  ],
+  [
+   "text/plain",
+   "a b\n\nc d"
+  ],
+  [
+   "application/json",
+   "{\"a\": 1}"
+  ],
+  [
+   "text/html",
+   ""
+  ],
+  [
+   "",
+   "x"
+  ]
+ ],
+ "wrap": "<untrusted_web_content url=\"https://u\">\ntext with untrusted-content inside\n</untrusted_web_content>"
+}

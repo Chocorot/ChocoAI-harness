@@ -1,83 +1,68 @@
 # The app UI (PWA) and its design rules
 
-Code: `web/` (served by `harness.static_file`). Tests: `node --test web/test/*.test.mjs` (markdown, SSE parsing, `<think>` splitting, icons), `StaticTests` in `test_harness.py` (what is served, content types, CSP, traversal, offline file list).
-No build step, no framework, no dependency except the vendored `web/vendor/motion.js` (see `web/vendor/README.md`).
+Code: `src/app/` (layout, page, robots, sitemap), `src/ui/` (the React app), `public/` (icons, manifest, `sw.js`).
+Tests: `src/ui/lib/turn.test.ts` (event parsing, `<think>` splitting, the turn model, replay of saved chats). The components themselves have no unit tests: they were checked in a real browser (see "Verified").
+Built with Next.js 16, Tailwind v4 and the shared `@chocorot/design` package (tokens, `ui/*` components, `shell/*`), the same as status and mail.
 
 ## Files
 | file | role |
 |---|---|
-| `index.html` | shell with a static skeleton, so something shows before JS runs |
-| `tokens.css` | the shared Choco design tokens (colours, radius, light/dark), vendored from `@chocorot/design` `plain/tokens.css`. Do not edit; see `vendor/README.md` to update |
-| `app.css` | harness-only names, layout, every component |
-| `js/theme.js` | sets the saved theme before first paint (a file, not inline, so the CSP can forbid inline scripts) |
-| `js/app.js` | controller: routing, public vs signed-in chat, sheets, sign-in, theme, install, composer |
-| `js/turn.js` | one assistant turn: thinking panel, streamed answer, tool cards, plan, status, notice, error. Fed by SSE events or by a saved chat |
-| `js/md.js` | markdown (escape first, block by block, so streaming re-renders only the last block) |
-| `js/sse.js` | SSE over fetch, inline `<think>` splitting |
-| `js/attach.js` | photo shrinking, base64, and telling a saved user message's text, document chips and photos apart |
-| `js/anim.js` | `motion` helpers (enter, pop, shake, sheet in/out); no-ops under reduced motion or if the library is missing |
-| `js/icons.js` | inline SVG icon table |
-| `sw.js`, `manifest.webmanifest`, `icons/` | installable app + offline shell |
-
-Adding a JS module: add it to `SHELL` in `sw.js` (a test fails otherwise).
+| `src/app/layout.tsx` | metadata (title, description, Open Graph, Twitter, icons, manifest), viewport/theme colours, fonts (Geist), `ThemeProvider`, `MotionProvider`, `TooltipProvider`, toaster, service worker registration |
+| `src/app/globals.css` | imports the design tokens and base CSS, tells Tailwind to scan the package, streamed-markdown styles, the shimmer |
+| `src/ui/app.tsx` | the controller: who am I, routing (`#/` and `#/c/<id>`), public vs signed-in chat, the run/stream/poll loop, sidebar and dialogs |
+| `src/ui/lib/turn.ts` | **no React**: SSE reader, `<think>` splitting, `TurnModel` (one assistant turn as data), `replay` of saved messages, tool/error tables |
+| `src/ui/turn-view.tsx` | draws a `TurnModel`: thinking panel, tool cards, plan, status line, notices, error cards |
+| `src/ui/markdown.tsx` | `react-markdown` + GFM; code blocks with Copy; links open in a new tab; model-supplied images are never rendered |
+| `src/ui/composer.tsx` | message box: attach (button, paste, drop), photo shrinking, effort menu, send/stop |
+| `src/ui/chat-list.tsx`, `automations.tsx`, `account.tsx` | the chat list (sidebar and phone sheet), the automations dialog, the account dialog |
+| `src/ui/lib/api.ts` | `api()` fetch helper, `Me` type, attachment limits, `store` (localStorage that never throws) |
+| `src/ui/icons.ts` | the icon names the turn model uses -> lucide icons |
+| `public/sw.js`, `public/manifest.webmanifest`, `public/icons/` | installable app + offline shell |
 
 ## What the page does
-- **Built from `/api/me`**: `capabilities.history` (`client` = visitor, `user` = saved chats), `tools`, `login`. No tier or tool names in the logic. Suggestion chips need a tool (`needs`), tool cards come from `TOOL_UI`, error icons from `ERROR_ICON` (both tables in `turn.js`); an unknown tool or error kind still renders (generic card).
-- **State in the URL**: `#/` new chat, `#/c/<id>` a saved chat, `#/login`.
-- **Visitor**: one chat kept in `localStorage` (`choco.public.chat.v1`, last 100 messages); Reset is in the Account sheet (two-tap confirm). The page sends its history on every request. A failed attempt leaves a hidden note in that history for the model (see errors.md).
-- **Signed in**: chat list (sidebar from 768 px, Chats sheet on phones), open/delete (two-tap confirm), new chat. Saved chats replay messages, tool calls, results and plans (thinking text is not stored, so reloaded chats show no thinking panel).
-- **Attachments** (signed in, when `/api/me` says so): paperclip, paste, drag and drop; chips with a thumbnail above the composer; the sent message shows the photo and document chips; saved chats load them back from `/api/sessions/<id>/uploads/...` (attachments.md).
-- **Automations** (when `/api/me` says `automations`): a clock button in the sidebar header (desktop) and a row in the Chats sheet (phone) open a sheet with the list (name, schedule, next/last run, on/off switch, Run now, Last result, two-tap Delete) and a form (name, prompt, Repeat or Daily). See automations.md.
-- **Chat rows**: a ⋯ menu (Rename in place, Delete with a second tap); the whole row is highlighted as one block. **Effort**: a three-bar button in the composer opens Low / Medium / High (chats.md).
-- **Streaming**: events are applied per animation frame; only the last markdown block re-renders, new blocks fade in, a pulsing dot marks the end of the text. "Jump to latest" appears when scrolled up; auto-scroll sticks only while near the bottom.
-- **Thinking panel**: shimmer label with a live timer, open while reasoning streams, collapses to "Thought for Ns" when the answer starts (unless the user opened or closed it). Reasoning written inline as `<think>...</think>` is handled too.
+- **Built from `/api/me`**: `capabilities.history` (`client` = visitor, `user` = saved chats), `tools`, `login`, `automations`, `attachments`. No tier or tool names in the logic. Suggestion chips need a tool (`needs`), tool cards come from `TOOL_UI`, error icons from `ERROR_ICON` (both tables in `lib/turn.ts`); an unknown tool or error kind still renders (generic card).
+- **State in the URL**: `#/` new chat, `#/c/<id>` a saved chat. Sign-in is a full-page trip to the SSO (`/api/auth/sso/start`); the page then reads `?signin=denied|error` once and shows a toast.
+- **Visitor**: one chat kept in `localStorage` (`choco.public.chat.v1`, last 100 messages); Reset is in the Account dialog (second press confirms). The page sends its history on every request. A failed attempt leaves a hidden note in that history for the model (errors.md).
+- **Signed in**: chat list (sidebar from 768 px, Chats dialog on phones), open, rename in place, delete (confirm dialog), new chat. Saved chats replay messages, tool calls, results and plans (thinking text is not stored, so reloaded chats show no thinking panel).
+- **Attachments** (signed in, when `/api/me` says so): paperclip, paste, drag and drop; chips above the composer; the sent message shows the photo and document chips; saved chats load them back from `/api/sessions/<id>/uploads/...` (attachments.md).
+- **Automations** (when `/api/me` says `automations`): an Automations button above the chat list opens a dialog with the list (name, schedule, next/last run, on/off switch, Run now, Last result, Delete) and a form (name, prompt, Repeat or Daily). See automations.md.
+- **Effort**: a three-bar button in the composer opens Low / Medium / High (chats.md).
+- **Streaming**: events go into the `TurnModel` and the page redraws at most once per animation frame; the markdown component is memoised so only changed text re-renders; auto-scroll sticks only while the reader is near the bottom, and a "Latest" button appears when scrolled up.
+- **Thinking panel**: shimmer label with a live timer, open while reasoning streams, folds to "Thought for Ns" when the answer starts (unless the user toggled it). Reasoning written inline as `<think>...</think>` is handled too.
 - **Tool cards**: running / ok / failed with elapsed time; failures open by themselves. Helper output (`sub` events) is nested inside the Helper card. `update_plan` is shown as a live checklist instead of a card.
 - **Status line**: waiting in line (N ahead), thinking step, retrying with a countdown. **Notices** (budget stops) have a Continue button. **Error cards** show the plain message, the reference id and Try again when retryable.
-- **Connection dropped** (phone backgrounded): for a saved chat the page polls `GET /api/sessions/<id>` until `running` is false and then reloads it; a visitor gets an error card with Try again.
+- **Connection dropped** (phone backgrounded): for a saved chat the page polls `GET /api/sessions/<id>` every 2.5 s until `running` is false and then reloads it; a visitor gets an error card with Try again.
 - Stop aborts the request. For a saved chat the run may still finish on the server; the page then catches up.
+- The chat answer is a server-sent event stream, so `next.config.ts` sets `compress: false` (gzip would hold the stream back).
 
 ## App-feel rules (so it does not feel like a website)
-- The page never scrolls: `html, body { overflow: hidden; overscroll-behavior: none }`, the app is `100dvh` (or the visual viewport height while the keyboard is open, set from `visualViewport`). Only the message list and sheets scroll.
-- Composer is pinned at the bottom with `env(safe-area-inset-*)`; textarea `font-size: 16px` (iOS does not zoom on focus); Enter sends on desktop, inserts a newline on touch devices.
-- Desktop sidebar (signed in): a button inside it closes it, the header then shows an open-sidebar button, and the choice is remembered (`choco-harness-sidebar`). Phones have no sidebar: the menu button opens the Chats sheet.
-- Phones: panels are **bottom sheets** with a grab handle (drag down to close, backdrop tap, Esc); desktop: centred dialogs and a permanent sidebar.
-- Touch targets are 44 px; press feedback is a small scale (`:active`), hover styles only inside `@media (hover: hover)`; no hover-only actions; no native `alert/confirm/prompt` (two-tap buttons and toasts instead).
-- `-webkit-tap-highlight-color: transparent`, `touch-action: manipulation`, chrome (buttons) is not text-selectable, message text is.
-- Installable: manifest (`display: standalone`), icons, `apple-mobile-web-app-*` tags, service worker (network first, cache as offline fallback; `/api/*` never cached). The Account sheet shows Install when the browser offers it, and a hint on iOS.
+- The page never scrolls: `html, body { overflow: hidden; overscroll-behavior: none }`, the app is `100dvh` (or the visual viewport height while the keyboard is open, set from `visualViewport`). Only the message list and dialogs scroll.
+- Composer is pinned at the bottom with `env(safe-area-inset-bottom)`; the textarea is `text-base` (16 px, so iOS does not zoom on focus); Enter sends on desktop, inserts a newline on touch devices (`pointer: coarse`).
+- Desktop sidebar (signed in): the menu button in the header closes/opens it and the choice is remembered (`choco-harness-sidebar`). On a phone the same button opens the Chats dialog.
+- No native `alert/confirm/prompt`: confirm dialogs, second-press buttons and toasts instead.
+- Installable: manifest (`display: standalone`), icons, `apple-mobile-web-app-*` tags (from the Next metadata), service worker (`public/sw.js`: network first, cache as offline fallback; `/api`, `/manage` and `/task` never cached; registered in production only). The Account dialog shows Install when the browser offers it, and a hint on iOS.
 - Code blocks and tables scroll sideways inside their own box.
 
 ## Design rules: the shared Choco design
-Source of truth since 2026-11-21: repo `ChocoHost-Design` (`@chocorot/design`), its `docs/design-rules.md` and `docs/tokens.md`. status and mail use the same package; this app (plain CSS, no build) uses its generated plain-CSS twin as `web/tokens.css`.
-- Same oklch tokens (cyan-to-sky primary hue 220, very dark dark mode, `--background/--card/--muted/--accent/--border/--sidebar`, status colours `--up/--degraded/--down/--unknown`), radius 0.5 rem. `app.css` only maps harness names onto them (`--primary-fg`, `--muted-fg`, `--user-bubble`); never redefine a shared token there.
-- Theme is System / Light / Dark via `data-theme` (the plain twin supports both the system media query and `data-theme`); own storage key `choco-harness-theme`. The shared sites also keep a `choco-theme` cookie on `.chocorot.net`; this app does NOT read it yet (a Phase 4 rewrite in Next.js gets the shared `ThemeProvider`).
-- The brand tile (`.logo`) is the accent colour with the glyph `icons/mark.svg` as a CSS mask in `--primary-foreground`. App icons, favicon and the preview images were regenerated on 2026-11-21 in the shared sky-cyan style (see branding-and-seo.md).
+Source of truth: repo `ChocoHost-Design` (`@chocorot/design`), its `docs/design-rules.md` and `docs/tokens.md`. status, mail, the SSO and this app use the same package.
+- Tokens and base CSS come from the package (`globals.css` imports them). **Never add or override a shared token here**; change it in the design repo. Components come from `@chocorot/design/ui/*` and the header from `@chocorot/design/shell/app-header`.
+- The brand tile is `BrandMark` with a lucide `Sparkles` icon (the header and the empty state); the app icons and favicon are the shared brand set, installed into `public/icons` (branding-and-seo.md).
+- Theme (System / Light / Dark) is the shared `ThemeProvider` (`next-themes`, class strategy, key `choco-theme`, plus a `choco-theme` cookie on `.chocorot.net` so the choice follows you between the sites).
 - Colour is never the only signal (icons on tool state, error kind, plan state). Status colours come from tokens, never raw colours.
-- Motion: 0.15 / 0.2 / 0.3 s, ease-out, no overshoot except the small spring on sheets; list stagger capped at 12; `prefers-reduced-motion` is honoured in CSS and in `anim.js`; content is visible before JS.
+- Motion comes from the package (`MotionProvider`, reduced motion honoured). Content is visible without it.
 - Data driven: behaviour from tables and `/api/me`, unknown ids degrade instead of crashing, state in the URL.
-- The login page copies the status/chocomail-web layout: logo tile, "Sign in", form on the left, a points panel on the right from 1024 px.
-- Differences: Geist is not loaded (system font stack; no font files to ship); `motion` is the vanilla build, not React.
-- Rules the status repo does not have and this app adds: 44 px targets, safe-area insets, bottom sheets, no native dialogs.
 
 ## Security of the page
-- CSP on the HTML: scripts only from our origin, no inline scripts, `frame-ancestors 'none'`. Model and user text is always escaped before markdown; links only `http(s):` and `mailto:` with `rel=noopener`.
+- Model and user text is rendered by `react-markdown` without raw HTML; links are http(s)/mailto only (library default) with `rel=noopener noreferrer`; model-supplied images are dropped.
+- `next.config.ts` adds `X-Content-Type-Options`, `X-Frame-Options: DENY` and `Referrer-Policy` to every response. **There is no Content-Security-Policy on the pages** (the old plain-JS page had a strict one; Next's inline hydration scripts need a nonce setup that is not built). Uploaded files are still served with `default-src 'none'; sandbox`.
 - Cookie and same-origin rules: auth-and-modes.md.
 
 ## Verified and not verified
-- Verified (2026-11-21, headless Firefox 1280x800 and 390x844, scripted against the real server with a fake model): empty state, public chat with streamed markdown, error card, wrong password, successful sign-in, saved chat and sidebar, account and chats sheets, light and dark. A "kitchen sink" render of every turn state (thinking, plan, tool ok/failed, helper, table, code, status, retry, errors, notice) at phone and desktop width. Logic tests in Node.
-- **Not verified**: iOS Safari and Android Chrome (keyboard and `visualViewport`, safe areas, drag-to-close with a real finger), installed-PWA mode, the service worker offline path, install prompt, copy buttons on a real clipboard, long-running streams over the Cloudflare tunnel, screen readers. Check these on a phone before relying on them.
+- Verified (2026-11-21, headless Chromium against `next start` and the standalone server, with a fake OpenAI-compatible model): empty state; public chat with streamed markdown and code block; history restored after reload; error card; signed-in chat (a session cookie minted with `AUTH_SECRET`, not through the SSO); tool call card with a failed result; rename in place; reopen from the sidebar; delete with confirm; effort menu; automations dialog opens; attachment (.txt) round trip and replay without the wrapper text; Stop; light and dark; 390 px phone width for the Chats and Account dialogs.
+- **Not verified**: a real sign-in through the SSO; iOS Safari and Android Chrome (keyboard and `visualViewport`, safe areas); installed-PWA mode, the service worker offline path, the install prompt; the "connection lost, reconnecting" poll path; photos (vision is off by default); long streams over the Cloudflare tunnel; screen readers; the automations form and scheduler through the UI (the API and scheduler are tested in Node).
 
 ## Known gaps
 - Thinking text is not stored with saved messages (needs a stored field and stripping it from what is sent to the model).
 - No regenerate for saved chats (the server has no "drop last reply" yet); visitors have it.
-- No tab bar or edge-swipe drawer: the header buttons open sheets instead.
-
-## Consistency rules (checked by eye on every change; keep them true)
-- The header is a 3-column grid (`1fr auto 1fr`): the title is **always centred** in the main pane, whatever buttons are on either side.
-- **No control twice on screen.** With the sidebar open (desktop, signed in) "new chat" and the account live in the sidebar and the header only carries the title; with it closed, or on a phone, the header carries menu, new chat and account (`syncChrome` in `app.js`).
-- Header and sidebar header have the **same height**, so their bottom lines meet.
-- **One hover/press overlay** for every control (`--hover`, `--press`, a translucent layer drawn over whatever background the control has), so buttons, chips, rows, attachment chips and menu rows all react the same way. Hover styles only inside `@media (hover: hover)`.
-- Controls inside the pill-shaped composer are **round** (attach, send); the disabled send button is neutral grey, not a faded accent.
-- Row actions (the ⋯ button) appear on hover/focus on hover-capable devices and are always visible on touch.
-- No sentence appears twice on one screen (the privacy line lives only under the composer).
-- Suggestion chips are equal-width grid cells.
-- The brand tile is the same teal tile with `icons/mark.svg` (the symmetric chat-bubble mark) in light and dark, everywhere (`.logo`).
+- The chat title is a thin line under the header, not in the header (the shared `AppHeader` has no title slot).
+- The install-dialog screenshots and the social preview image still show the previous UI (branding-and-seo.md).

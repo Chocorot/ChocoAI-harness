@@ -1,4 +1,12 @@
 harness.db*
 workspace/
+data/
 .env
+.env.*
+!.env.example
 __pycache__/
+node_modules
+.next
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store

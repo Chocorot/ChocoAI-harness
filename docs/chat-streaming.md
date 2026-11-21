@@ -1,11 +1,11 @@
 # Chat streaming and the run queue
 
-Code: `harness.py` (`make_server`, `Sse`, `keepalive`, `run_agent`), `runq.py`. Tests: `RunQueueTests`, `ServerErrorTests.test_busy_queued_and_keepalive`.
+Code: `src/server/chat.ts` (`runSession`, `publicChat`), `src/server/sse.ts` (`openSse`, keepalive), `src/core/agent.ts` (`runAgent`), `src/core/runq.ts`. Tests: `src/core/runq.test.ts`, `src/server/api.test.ts` (busy, queued, keepalive), `src/ui/lib/turn.test.ts` (the page's reader).
 
 ## `POST /task` and `POST /api/chat`
 - `/task`: admin only (`Authorization: Bearer $HARNESS_TOKEN`; no token set = 404). `stream` default false.
 - `/api/chat`: signed-in users `{goal, session, retry, stream}` (stream default true) or visitors `{messages:[...]}` (always streams). Who may do what: auth-and-modes.md.
-- Body (JSON object, max 1 MB): `goal` (text), `session` (number, resume), `stream` (bool), `retry` (bool, see errors.md). Needs `goal` or `session`.
+- Body (JSON object, max 1 MB; 9 MB for a signed-in `/api/chat` with attachments): `goal` (text), `session` (number, resume), `stream` (bool), `retry` (bool, see errors.md). Needs `goal` or `session`.
 - Non-stream: `{"session": id, "reply": text}`.
 - Stream: `text/event-stream`, lines `data: {json}` separated by a blank line.
 
@@ -27,9 +27,9 @@ Code: `harness.py` (`make_server`, `Sse`, `keepalive`, `run_agent`), `runq.py`. 
 
 Events from a delegated helper carry an extra `"sub": <call id>` (`status`, `think`, `text`, `tool`, `result`, `retrying`).
 
-A comment line `: ka` is sent every 10 s (`harness.KEEPALIVE`). The app ignores it (see `sse.js`). It stops Cloudflare and other proxies from cutting a stream that is silent during a long prefill or a model load (about 22 s to the first token on lyna).
+A comment line `: ka` is sent every 10 s (`HARNESS_KEEPALIVE`, `src/server/sse.ts`). The app ignores it (`splitEvents` in `src/ui/lib/turn.ts`). `next.config.ts` sets `compress: false`, otherwise gzip would buffer the stream. It stops Cloudflare and other proxies from cutting a stream that is silent during a long prefill or a model load (about 22 s to the first token on lyna).
 
-## Run queue (`runq.RunQueue`)
+## Run queue (`runq.ts` `RunQueue`)
 - One run at a time (the local model serves one stream). Others wait in line, ordered by priority then arrival (`prio` comes from `auth.MODES`: admin 0, users 1, visitors 2; automations run at users + 0.5, between users and visitors).
 - Line length is limited by the `max_queue` setting (default 8); visitors get the shorter `max_queue_public` (default 2). A full line answers `busy` (HTTP 503, or an `error` event). An idle queue never refuses.
 - A client that disconnects while waiting leaves the line. Once a run has started it always finishes, so history stays consistent.

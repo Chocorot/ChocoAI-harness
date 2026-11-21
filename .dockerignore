@@ -1,7 +1,12 @@
-test_harness.py
+.git
+.github
+.next
+node_modules
 workspace/
+data/
 harness.db*
-.git/
 .env
-__pycache__/
-web/test/
+.env.*
+docs/
+*.tsbuildinfo
+next-env.d.ts

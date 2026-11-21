@@ -1,0 +1,1426 @@
+{
+ "checks": [
+  {
+   "err": "must have 1 to 8000 characters",
+   "key": "system_prompt",
+   "nan": false,
+   "value": ""
+  },
+  {
+   "err": null,
+   "key": "system_prompt",
+   "nan": false,
+   "value": "a"
+  },
+  {
+   "err": "must have 1 to 8000 characters",
+   "key": "system_prompt",
+   "nan": false,
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "err": "must be text",
+   "key": "system_prompt",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must have 1 to 200 characters",
+   "key": "model",
+   "nan": false,
+   "value": ""
+  },
+  {
+   "err": null,
+   "key": "model",
+   "nan": false,
+   "value": "a"
+  },
+  {
+   "err": "must have 1 to 200 characters",
+   "key": "model",
+   "nan": false,
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "err": "must be text",
+   "key": "model",
+   "nan": false,
+   "value": 5
+  },
+  {
+   "err": "must be text",
+   "key": "model",
+   "nan": false,
+   "value": null
+  },
+  {
+   "err": "must have 1 to 200 characters",
+   "key": "model",
+   "nan": false,
+   "value": " "
+  },
+  {
+   "err": "must be between 1 and 100",
+   "key": "max_turns",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "max_turns",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "max_turns",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_turns",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_turns",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_turns",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1 and 100",
+   "key": "max_turns",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_turns",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 1000 and 200000",
+   "key": "compact_at",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be between 1000 and 200000",
+   "key": "compact_at",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 1000 and 200000",
+   "key": "compact_at",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "compact_at",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "compact_at",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "compact_at",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1000 and 200000",
+   "key": "compact_at",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "compact_at",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 1 and 50",
+   "key": "keep_turns",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "keep_turns",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "keep_turns",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "keep_turns",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "keep_turns",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "keep_turns",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1 and 50",
+   "key": "keep_turns",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "keep_turns",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 1 and 7200",
+   "key": "max_seconds",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "max_seconds",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "max_seconds",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_seconds",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_seconds",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_seconds",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1 and 7200",
+   "key": "max_seconds",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_seconds",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 1000 and 5000000",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be between 1000 and 5000000",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 1000 and 5000000",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1000 and 5000000",
+   "key": "max_run_tokens",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_run_tokens",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 1 and 50",
+   "key": "delegate_turns",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "delegate_turns",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "delegate_turns",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "delegate_turns",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "delegate_turns",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "delegate_turns",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1 and 50",
+   "key": "delegate_turns",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "delegate_turns",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "smart_titles",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": null,
+   "key": "smart_titles",
+   "nan": false,
+   "value": false
+  },
+  {
+   "err": "must be true or false",
+   "key": "smart_titles",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be true or false",
+   "key": "smart_titles",
+   "nan": false,
+   "value": "true"
+  },
+  {
+   "err": "must be true or false",
+   "key": "smart_titles",
+   "nan": false,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "max_automations",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "max_automations",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "max_automations",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_automations",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_automations",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_automations",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 0 and 50",
+   "key": "max_automations",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_automations",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 1 and 1440",
+   "key": "min_interval_min",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "min_interval_min",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "min_interval_min",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "min_interval_min",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "min_interval_min",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "min_interval_min",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1 and 1440",
+   "key": "min_interval_min",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "min_interval_min",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "retries",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "retries",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 0 and 5",
+   "key": "retries",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "retries",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "retries",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "retries",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 0 and 5",
+   "key": "retries",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "retries",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "max_queue",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "max_queue",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "max_queue",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_queue",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_queue",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_queue",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 0 and 100",
+   "key": "max_queue",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_queue",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must have 1 to 4000 characters",
+   "key": "public_prompt",
+   "nan": false,
+   "value": ""
+  },
+  {
+   "err": null,
+   "key": "public_prompt",
+   "nan": false,
+   "value": "a"
+  },
+  {
+   "err": "must have 1 to 4000 characters",
+   "key": "public_prompt",
+   "nan": false,
+   "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "err": "must be text",
+   "key": "public_prompt",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 1 and 600",
+   "key": "public_rpm",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "public_rpm",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "public_rpm",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "public_rpm",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "public_rpm",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "public_rpm",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 1 and 600",
+   "key": "public_rpm",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "public_rpm",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "max_queue_public",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "max_queue_public",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": null,
+   "key": "max_queue_public",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_queue_public",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_queue_public",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_queue_public",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 0 and 100",
+   "key": "max_queue_public",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_queue_public",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 500 and 200000",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be between 500 and 200000",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 500 and 200000",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 500 and 200000",
+   "key": "public_max_chars",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "public_max_chars",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": "must be between 16 and 32768",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be between 16 and 32768",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 16 and 32768",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 16 and 32768",
+   "key": "public_max_tokens",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "public_max_tokens",
+   "nan": true,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "vision",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": null,
+   "key": "vision",
+   "nan": false,
+   "value": false
+  },
+  {
+   "err": "must be true or false",
+   "key": "vision",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be true or false",
+   "key": "vision",
+   "nan": false,
+   "value": "true"
+  },
+  {
+   "err": "must be true or false",
+   "key": "vision",
+   "nan": false,
+   "value": null
+  },
+  {
+   "err": null,
+   "key": "temperature",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": null,
+   "key": "temperature",
+   "nan": false,
+   "value": 0.5
+  },
+  {
+   "err": null,
+   "key": "temperature",
+   "nan": false,
+   "value": 2
+  },
+  {
+   "err": "must be between 0 and 2",
+   "key": "temperature",
+   "nan": false,
+   "value": 2.1
+  },
+  {
+   "err": "must be between 0 and 2",
+   "key": "temperature",
+   "nan": false,
+   "value": -1
+  },
+  {
+   "err": "must be a number",
+   "key": "temperature",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "temperature",
+   "nan": false,
+   "value": "1"
+  },
+  {
+   "err": "must be between 16 and 131072",
+   "key": "max_tokens",
+   "nan": false,
+   "value": 0
+  },
+  {
+   "err": "must be between 16 and 131072",
+   "key": "max_tokens",
+   "nan": false,
+   "value": 1
+  },
+  {
+   "err": "must be between 16 and 131072",
+   "key": "max_tokens",
+   "nan": false,
+   "value": 15
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_tokens",
+   "nan": false,
+   "value": 1.5
+  },
+  {
+   "err": "must be a number",
+   "key": "max_tokens",
+   "nan": false,
+   "value": true
+  },
+  {
+   "err": "must be a number",
+   "key": "max_tokens",
+   "nan": false,
+   "value": "3"
+  },
+  {
+   "err": "must be between 16 and 131072",
+   "key": "max_tokens",
+   "nan": false,
+   "value": 1000000000000
+  },
+  {
+   "err": "must be a whole number",
+   "key": "max_tokens",
+   "nan": true,
+   "value": null
+  }
+ ],
+ "current": {
+  "compact_at": 11000,
+  "delegate_turns": 8,
+  "keep_turns": 4,
+  "max_automations": 5,
+  "max_queue": 8,
+  "max_queue_public": 2,
+  "max_run_tokens": 200000,
+  "max_seconds": 900,
+  "max_tokens": null,
+  "max_turns": 15,
+  "min_interval_min": 15,
+  "model": "qwen/qwen3.6-35b-a3b",
+  "public_max_chars": 24000,
+  "public_max_tokens": 1024,
+  "public_prompt": "You are a friendly, concise assistant on a public website. You cannot browse the web, run code or use tools. If asked to, say so briefly. Do not claim to remember earlier visits.",
+  "public_rpm": 6,
+  "retries": 2,
+  "smart_titles": true,
+  "system_prompt": "You are an agent working in a workspace directory. Complete the user's goal with the tools you are given. Rules: read only the line ranges you need; prefer edit_file (exact unique old_text) over rewriting files; check your work; keep replies short; when done, reply with a brief summary and call no tools.",
+  "temperature": null,
+  "vision": false
+ },
+ "fields": [
+  {
+   "default": "You are an agent working in a workspace directory. Complete the user's goal with the tools you are given. Rules: read only the line ranges you need; prefer edit_file (exact unique old_text) over rewriting files; check your work; keep replies short; when done, reply with a brief summary and call no tools.",
+   "help": "Sent first in every run. Keep it short: the backend window is 16K tokens. Applies from the next run, also to resumed sessions.",
+   "key": "system_prompt",
+   "label": "System prompt",
+   "max": 8000,
+   "min": 1,
+   "type": "text"
+  },
+  {
+   "default": "qwen/qwen3.6-35b-a3b",
+   "env": "MODEL",
+   "help": "Model id sent to the backend.",
+   "key": "model",
+   "label": "Model",
+   "max": 200,
+   "min": 1,
+   "type": "string"
+  },
+  {
+   "default": 15,
+   "help": "Model calls before a run is stopped (a stopped session can be continued).",
+   "key": "max_turns",
+   "label": "Max turns per run",
+   "max": 100,
+   "min": 1,
+   "type": "int"
+  },
+  {
+   "default": 11000,
+   "help": "Older tool traffic is shrunk above this estimate. Keep it below the backend window minus room for the reply.",
+   "key": "compact_at",
+   "label": "Compact above (est. tokens)",
+   "max": 200000,
+   "min": 1000,
+   "type": "int"
+  },
+  {
+   "default": 4,
+   "help": "The last N turns are never shrunk by compaction.",
+   "key": "keep_turns",
+   "label": "Turns kept intact",
+   "max": 50,
+   "min": 1,
+   "type": "int"
+  },
+  {
+   "default": 900,
+   "help": "Wall-clock budget of one run (including helpers). The run stops with a notice when it is used up.",
+   "key": "max_seconds",
+   "label": "Max seconds per run",
+   "max": 7200,
+   "min": 1,
+   "type": "int"
+  },
+  {
+   "default": 200000,
+   "help": "Prompt + reply tokens added up over every model call of a run (prompts are re-sent each turn).",
+   "key": "max_run_tokens",
+   "label": "Max tokens per run",
+   "max": 5000000,
+   "min": 1000,
+   "type": "int"
+  },
+  {
+   "default": 8,
+   "help": "Model calls a delegated subtask may use before it must report back.",
+   "key": "delegate_turns",
+   "label": "Max turns of a helper",
+   "max": 50,
+   "min": 1,
+   "type": "int"
+  },
+  {
+   "default": true,
+   "help": "After the first answer of a new chat, ask the model for a short title (a few seconds of model time, queued behind live chats). Off = the title stays the first words of the first message.",
+   "key": "smart_titles",
+   "label": "Model-written chat titles",
+   "type": "bool"
+  },
+  {
+   "default": 5,
+   "help": "Scheduled prompts one signed-in user may keep. 0 switches creating new ones off.",
+   "key": "max_automations",
+   "label": "Max automations per user",
+   "max": 50,
+   "min": 0,
+   "type": "int"
+  },
+  {
+   "default": 15,
+   "help": "A repeating automation can't run more often than this (each run occupies the one model).",
+   "key": "min_interval_min",
+   "label": "Shortest automation interval (minutes)",
+   "max": 1440,
+   "min": 1,
+   "type": "int"
+  },
+  {
+   "default": 2,
+   "help": "How often a run silently retries when the model server is down, errors or garbles a reply (waits 2s, 6s, 15s).",
+   "key": "retries",
+   "label": "Auto-retries on model errors",
+   "max": 5,
+   "min": 0,
+   "type": "int"
+  },
+  {
+   "default": 8,
+   "help": "One run executes at a time. More waiting than this gets a 'busy' answer.",
+   "key": "max_queue",
+   "label": "Max runs waiting in line",
+   "max": 100,
+   "min": 0,
+   "type": "int"
+  },
+  {
+   "default": "You are a friendly, concise assistant on a public website. You cannot browse the web, run code or use tools. If asked to, say so briefly. Do not claim to remember earlier visits.",
+   "help": "System prompt for visitors who are not signed in (chat only, no tools).",
+   "key": "public_prompt",
+   "label": "Public chat prompt",
+   "max": 4000,
+   "min": 1,
+   "type": "text"
+  },
+  {
+   "default": 6,
+   "help": "Visitors above this get a 'too many requests' answer.",
+   "key": "public_rpm",
+   "label": "Public requests per minute (per IP)",
+   "max": 600,
+   "min": 1,
+   "type": "int"
+  },
+  {
+   "default": 2,
+   "help": "Public visitors are refused (busy) when this many are already waiting, so signed-in users still get in.",
+   "key": "max_queue_public",
+   "label": "Public visitors allowed to wait",
+   "max": 100,
+   "min": 0,
+   "type": "int"
+  },
+  {
+   "default": 24000,
+   "help": "Older messages of a public chat are dropped above this size. The window is 16K tokens.",
+   "key": "public_max_chars",
+   "label": "Public history size (characters)",
+   "max": 200000,
+   "min": 500,
+   "type": "int"
+  },
+  {
+   "default": 1024,
+   "help": "Caps the length of a public reply so one visitor can't hold the model for minutes.",
+   "key": "public_max_tokens",
+   "label": "Public max reply tokens",
+   "max": 32768,
+   "min": 16,
+   "type": "int"
+  },
+  {
+   "default": false,
+   "help": "Let signed-in users attach a photo. Turn on only when the model on the backend can look at images (a vision model); otherwise it answers nonsense or errors.",
+   "key": "vision",
+   "label": "Photo input (vision)",
+   "type": "bool"
+  },
+  {
+   "default": null,
+   "help": "Empty = backend default.",
+   "key": "temperature",
+   "label": "Temperature",
+   "max": 2,
+   "min": 0,
+   "optional": true,
+   "type": "float"
+  },
+  {
+   "default": null,
+   "help": "Empty = backend default.",
+   "key": "max_tokens",
+   "label": "Max reply tokens",
+   "max": 131072,
+   "min": 16,
+   "optional": true,
+   "type": "int"
+  }
+ ],
+ "manifest": [
+  {
+   "default": "You are an agent working in a workspace directory. Complete the user's goal with the tools you are given. Rules: read only the line ranges you need; prefer edit_file (exact unique old_text) over rewriting files; check your work; keep replies short; when done, reply with a brief summary and call no tools.",
+   "help": "Sent first in every run. Keep it short: the backend window is 16K tokens. Applies from the next run, also to resumed sessions.",
+   "key": "system_prompt",
+   "label": "System prompt",
+   "max": 8000,
+   "min": 1,
+   "optional": false,
+   "type": "text",
+   "value": "You are an agent working in a workspace directory. Complete the user's goal with the tools you are given. Rules: read only the line ranges you need; prefer edit_file (exact unique old_text) over rewriting files; check your work; keep replies short; when done, reply with a brief summary and call no tools."
+  },
+  {
+   "default": "qwen/qwen3.6-35b-a3b",
+   "help": "Model id sent to the backend.",
+   "key": "model",
+   "label": "Model",
+   "max": 200,
+   "min": 1,
+   "optional": false,
+   "type": "string",
+   "value": "qwen/qwen3.6-35b-a3b"
+  },
+  {
+   "default": 15,
+   "help": "Model calls before a run is stopped (a stopped session can be continued).",
+   "key": "max_turns",
+   "label": "Max turns per run",
+   "max": 100,
+   "min": 1,
+   "optional": false,
+   "type": "int",
+   "value": 15
+  },
+  {
+   "default": 11000,
+   "help": "Older tool traffic is shrunk above this estimate. Keep it below the backend window minus room for the reply.",
+   "key": "compact_at",
+   "label": "Compact above (est. tokens)",
+   "max": 200000,
+   "min": 1000,
+   "optional": false,
+   "type": "int",
+   "value": 11000
+  },
+  {
+   "default": 4,
+   "help": "The last N turns are never shrunk by compaction.",
+   "key": "keep_turns",
+   "label": "Turns kept intact",
+   "max": 50,
+   "min": 1,
+   "optional": false,
+   "type": "int",
+   "value": 4
+  },
+  {
+   "default": 900,
+   "help": "Wall-clock budget of one run (including helpers). The run stops with a notice when it is used up.",
+   "key": "max_seconds",
+   "label": "Max seconds per run",
+   "max": 7200,
+   "min": 1,
+   "optional": false,
+   "type": "int",
+   "value": 900
+  },
+  {
+   "default": 200000,
+   "help": "Prompt + reply tokens added up over every model call of a run (prompts are re-sent each turn).",
+   "key": "max_run_tokens",
+   "label": "Max tokens per run",
+   "max": 5000000,
+   "min": 1000,
+   "optional": false,
+   "type": "int",
+   "value": 200000
+  },
+  {
+   "default": 8,
+   "help": "Model calls a delegated subtask may use before it must report back.",
+   "key": "delegate_turns",
+   "label": "Max turns of a helper",
+   "max": 50,
+   "min": 1,
+   "optional": false,
+   "type": "int",
+   "value": 8
+  },
+  {
+   "default": true,
+   "help": "After the first answer of a new chat, ask the model for a short title (a few seconds of model time, queued behind live chats). Off = the title stays the first words of the first message.",
+   "key": "smart_titles",
+   "label": "Model-written chat titles",
+   "optional": false,
+   "type": "bool",
+   "value": true
+  },
+  {
+   "default": 5,
+   "help": "Scheduled prompts one signed-in user may keep. 0 switches creating new ones off.",
+   "key": "max_automations",
+   "label": "Max automations per user",
+   "max": 50,
+   "min": 0,
+   "optional": false,
+   "type": "int",
+   "value": 5
+  },
+  {
+   "default": 15,
+   "help": "A repeating automation can't run more often than this (each run occupies the one model).",
+   "key": "min_interval_min",
+   "label": "Shortest automation interval (minutes)",
+   "max": 1440,
+   "min": 1,
+   "optional": false,
+   "type": "int",
+   "value": 15
+  },
+  {
+   "default": 2,
+   "help": "How often a run silently retries when the model server is down, errors or garbles a reply (waits 2s, 6s, 15s).",
+   "key": "retries",
+   "label": "Auto-retries on model errors",
+   "max": 5,
+   "min": 0,
+   "optional": false,
+   "type": "int",
+   "value": 2
+  },
+  {
+   "default": 8,
+   "help": "One run executes at a time. More waiting than this gets a 'busy' answer.",
+   "key": "max_queue",
+   "label": "Max runs waiting in line",
+   "max": 100,
+   "min": 0,
+   "optional": false,
+   "type": "int",
+   "value": 8
+  },
+  {
+   "default": "You are a friendly, concise assistant on a public website. You cannot browse the web, run code or use tools. If asked to, say so briefly. Do not claim to remember earlier visits.",
+   "help": "System prompt for visitors who are not signed in (chat only, no tools).",
+   "key": "public_prompt",
+   "label": "Public chat prompt",
+   "max": 4000,
+   "min": 1,
+   "optional": false,
+   "type": "text",
+   "value": "You are a friendly, concise assistant on a public website. You cannot browse the web, run code or use tools. If asked to, say so briefly. Do not claim to remember earlier visits."
+  },
+  {
+   "default": 6,
+   "help": "Visitors above this get a 'too many requests' answer.",
+   "key": "public_rpm",
+   "label": "Public requests per minute (per IP)",
+   "max": 600,
+   "min": 1,
+   "optional": false,
+   "type": "int",
+   "value": 6
+  },
+  {
+   "default": 2,
+   "help": "Public visitors are refused (busy) when this many are already waiting, so signed-in users still get in.",
+   "key": "max_queue_public",
+   "label": "Public visitors allowed to wait",
+   "max": 100,
+   "min": 0,
+   "optional": false,
+   "type": "int",
+   "value": 2
+  },
+  {
+   "default": 24000,
+   "help": "Older messages of a public chat are dropped above this size. The window is 16K tokens.",
+   "key": "public_max_chars",
+   "label": "Public history size (characters)",
+   "max": 200000,
+   "min": 500,
+   "optional": false,
+   "type": "int",
+   "value": 24000
+  },
+  {
+   "default": 1024,
+   "help": "Caps the length of a public reply so one visitor can't hold the model for minutes.",
+   "key": "public_max_tokens",
+   "label": "Public max reply tokens",
+   "max": 32768,
+   "min": 16,
+   "optional": false,
+   "type": "int",
+   "value": 1024
+  },
+  {
+   "default": false,
+   "help": "Let signed-in users attach a photo. Turn on only when the model on the backend can look at images (a vision model); otherwise it answers nonsense or errors.",
+   "key": "vision",
+   "label": "Photo input (vision)",
+   "optional": false,
+   "type": "bool",
+   "value": false
+  },
+  {
+   "default": null,
+   "help": "Empty = backend default.",
+   "key": "temperature",
+   "label": "Temperature",
+   "max": 2,
+   "min": 0,
+   "optional": true,
+   "type": "float",
+   "value": null
+  },
+  {
+   "default": null,
+   "help": "Empty = backend default.",
+   "key": "max_tokens",
+   "label": "Max reply tokens",
+   "max": 131072,
+   "min": 16,
+   "optional": true,
+   "type": "int",
+   "value": null
+  },
+  {
+   "help": "Set by the BASE_URL environment variable (restart to change).",
+   "key": "base_url",
+   "label": "Backend URL",
+   "type": "readonly",
+   "value": "http://localhost:1235/v1"
+  }
+ ],
+ "validate": [
+  [
+   null,
+   [
+    null,
+    "settings must be a non-empty object"
+   ]
+  ],
+  [
+   {},
+   [
+    null,
+    "settings must be a non-empty object"
+   ]
+  ],
+  [
+   {
+    "max_turns": 5
+   },
+   [
+    {
+     "max_turns": 5
+    },
+    null
+   ]
+  ],
+  [
+   {
+    "max_turns": 0
+   },
+   [
+    null,
+    "max_turns must be between 1 and 100"
+   ]
+  ],
+  [
+   {
+    "nope": 1
+   },
+   [
+    null,
+    "unknown setting: nope"
+   ]
+  ],
+  [
+   {
+    "temperature": null,
+    "vision": true
+   },
+   [
+    {
+     "temperature": null,
+     "vision": true
+    },
+    null
+   ]
+  ],
+  [
+   {
+    "vision": "yes"
+   },
+   [
+    null,
+    "vision must be true or false"
+   ]
+  ]
+ ]
+}

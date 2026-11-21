@@ -1,0 +1,86 @@
+{
+ "clean": [
+  [
+   "Title: My chat",
+   "My chat"
+  ],
+  [
+   "\"Quoted title.\"",
+   "Quoted title"
+  ],
+  [
+   "chat title - Trip plan",
+   "Trip plan"
+  ],
+  [
+   "x",
+   ""
+  ],
+  [
+   "",
+   ""
+  ],
+  [
+   "Line one\nline two",
+   "Line one"
+  ],
+  [
+   "**Bold** `code` title.",
+   "Bold code title"
+  ],
+  [
+   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  ],
+  [
+   "  Title:   spaced   out  ",
+   "spaced out"
+  ]
+ ],
+ "short": [
+  [
+   "",
+   "New chat"
+  ],
+  [
+   "   ",
+   "New chat"
+  ],
+  [
+   "Hello world",
+   "Hello world"
+  ],
+  [
+   "# Fix the **bug** in `app.py` please",
+   "Fix the bug in app.py please"
+  ],
+  [
+   "See https://example.com/a/b?c=d for details",
+   "See example.com for details"
+  ],
+  [
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+  ],
+  [
+   "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word ",
+   "word word word word word word word word word…"
+  ],
+  [
+   "First line\nSecond line",
+   "First line"
+  ],
+  [
+   "…",
+   "…"
+  ],
+  [
+   "Plan a 3-day trip to Kyoto and check the weather for next week.",
+   "Plan a 3-day trip to Kyoto and check the…"
+  ],
+  [
+   "a, b; c: d - e a, b; c: d - e a, b; c: d - e a, b; c: d - e a, b; c: d - e a, b; c: d - e a, b; c: d - e a, b; c: d - e ",
+   "a, b; c: d - e a, b; c: d - e a, b; c: d - e a…"
+  ]
+ ]
+}

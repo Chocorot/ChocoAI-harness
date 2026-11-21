@@ -14,18 +14,23 @@
 - **Read first, always**: before any task (even a small one) read `README.md` and the matching file in [`docs/`](docs/README.md).
 - **Update in the same change**: any change to behavior, API, settings, env vars or UI updates the matching doc in the same commit. A stale doc is worse than none.
 - Docs are split by feature in `docs/`. No giant log file. Learned something the hard way: write it down there.
-- Run only the tests your change touches while iterating; run the whole suite once before finishing. Do not delete tests without approval.
+- Run only the tests your change touches while iterating (`node --experimental-strip-types --test src/core/x.test.ts`); run `npm test`, `npm run typecheck` and `npm run build` once before finishing. Do not delete tests without approval.
 
 ---
 
 ## Architecture and constraints
 
-- Backend: Python 3 standard library only. Zero pip dependencies. The only allowed system add-on is `poppler-utils` (PDF text).
-- Memory target: small (README says about 35 MB idle). `mem_limit` in compose is 256m.
-- State: SQLite. Settings are one table in `settings.py`; a new setting is one row.
-- Failures: every failure goes through `errors.py` (one table). Never put a raw Python exception string in front of a user.
-- Data driven: behaviour comes from tables (settings, error kinds, mode -> tools), not from names in `if` chains.
-- Public exposure: the page may be public; anything that runs tools or shell must be behind a login or token.
+- Stack: Next.js 16 + TypeScript, one container (UI, API, scheduler). Rewritten from Python on 2026-11-21 ([docs/ts-rewrite.md](docs/ts-rewrite.md)); no Python is left.
+- Layers: `src/core/` is the engine and must not import Next, React or anything from `src/server` / `src/ui` (relative `.ts` imports, so the Node test runner loads it). `src/server/` is HTTP glue as `(Request) => Response`; `src/app/**/route.ts` only wire URLs to it. `src/ui/` is the React app (`src/ui/lib/turn.ts` stays framework-free).
+- Look and feel: only `@chocorot/design` (tokens, `ui/*`, `shell/*`). Never add or override a shared token here; change it in the ChocoHost-Design repo. Login is the Choco SSO (OIDC client).
+- Few dependencies. Adding one needs a reason (the core uses `better-sqlite3`, `fflate`, `jose`).
+- Memory: about 100 MB RSS measured; `mem_limit` in compose is 512m.
+- State: SQLite, one file per user (docs/storage-isolation.md). Settings are one table in `src/core/settings.ts`; a new setting is one row.
+- Failures: every failure goes through `src/core/errors.ts` (one table). Never put a raw exception string in front of a user.
+- Data driven: behaviour comes from tables (settings, error kinds, mode -> tools, tool UI), not from names in `if` chains.
+- Public exposure: the page may be public; anything that runs tools or shell must be behind a login or token. The shell for users is off unless `HARNESS_SHELL=unconfined`.
+- `test/golden/*.json` are frozen outputs of the old Python code. Change one only on purpose, and say why.
+- Pushing to `main` builds `:latest` and watchtower deploys it: never push for me (see below).
 
 ---
 
@@ -47,4 +52,4 @@ My sessions often touch several repos at once, and only this repo's rules load b
 
 - Say which repo each change is for.
 - Before changing another repo, read its `AGENTS.md` first. Do not apply this repo's rules there.
-- Related repos: `choc-node-agent` (gateway + node agent, contract in its `docs/ai-gateway.md`), `ChocoHost-status` (dashboard `/ai` page, design rules in its `docs/design-principles.md`), `chocomail-dms` (mail accounts used for login).
+- Related repos: `choc-node-agent` (gateway + node agent, contract in its `docs/ai-gateway.md`), `ChocoHost-status` (dashboard `/ai` page, design rules in its `docs/design-principles.md`), `ChocoHost-SSO` (the login; client `ai`), `ChocoHost-Design` (`@chocorot/design`), `chocomail-dms` (mail server; the SSO syncs passwords into it).

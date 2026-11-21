@@ -1,13 +1,13 @@
 # Attachments: photos and documents
 
-Code: `attach.py` (limits, readers, `process`, `expand`), `harness.py` (`_run`, `_upload_get`), `tools.py` (`read_file`), `web/js/attach.js` + `web/js/app.js` (page).
-Tests: `AttachUnitTests`, `AttachmentApiTests`, `BoolSettingTests` in `test_harness.py`; `node --test web/test/*.test.mjs`.
+Code: `src/core/attach.ts` (limits, readers, `process_`, `expand`), `src/server/api.ts` (`uploadGet`), `src/server/chat.ts`, `src/core/tools.ts` (`read_file`), `src/ui/composer.tsx` + `src/ui/lib/api.ts` (page side: shrink, base64, limits), `src/ui/lib/turn.ts` (`parseUserContent`).
+Tests: `src/core/attach.test.ts`, `src/server/api.test.ts` (attachment API), `src/ui/lib/turn.test.ts`.
 Signed-in users only. Visitors have no attachments (the public chat stays text-only); the admin `/task` endpoint refuses them too.
 
 ## What a user can do
 - Paperclip button, paste (images) or drag and drop (desktop). Up to 4 attachments per message: one photo plus documents.
 - **Photo** (needs the `vision` setting, see below): the page shrinks it to at most 1280 px on the long side and re-encodes it as JPEG (rotation fixed, transparency flattened), so a phone photo is about 100-300 KB. The server accepts up to 2.5 MB and checks the file's real type from its first bytes (jpeg, png, gif, webp), not from its name.
-- **Documents**: `.txt .md .csv .tsv .json .xml .yaml .yml .toml .ini .log .html .css .js .ts .py .sh .sql .c .h .cpp .java .go .rs .rb .php` (UTF-8 text), `.docx` (unzipped with `zipfile`, paragraph text only) and `.pdf` (text layer via poppler's `pdftotext`). Up to 3 MB each. The list is `attach.READERS` (extension -> reader function); a new type is a new row, and `/api/me` tells the page which extensions to accept.
+- **Documents**: `.txt .md .csv .tsv .json .xml .yaml .yml .toml .ini .log .html .css .js .ts .py .sh .sql .c .h .cpp .java .go .rs .rb .php` (UTF-8 text), `.docx` (unzipped with `fflate`, paragraph text only) and `.pdf` (text layer via poppler's `pdftotext`). Up to 3 MB each. The list is `attach.ts` `READERS` (extension -> reader function); a new type is a new row, and `/api/me` tells the page which extensions to accept.
 - A message may be only attachments; the text then defaults to "Please look at the attached file."
 
 ## What the model gets
@@ -29,7 +29,7 @@ Request bodies: signed-in chat accepts up to 9 MB (`ATTACH_BODY`), everything el
 - `bool` is a new settings field type; `/manage/manifest` reports it as `"type":"bool"`, which the node-agent contract already lists.
 
 ## Deploy
-- `Dockerfile` installs `poppler-utils` (about 4 MB); without it PDFs answer "reading PDFs isn't set up on this server" and everything else still works. **Not run here**: no Docker, and `pdftotext` is not installed on this Mac, so the PDF reader is tested against a mocked `subprocess.run` only (argument list, empty text, failure, timeout). Try one real PDF after deploying.
+- The `Dockerfile` installs `poppler-utils` (about 4 MB); without it PDFs answer "reading PDFs isn't set up on this server" and everything else still works. **Not run here**: no Docker, and `pdftotext` is not installed on this Mac, so **the PDF reader has no test at all** in the TypeScript app (the Python one was tested against a mocked `subprocess.run`; that test was not ported). Try one real PDF after deploying.
 
 ## Not done
 - No OCR (scanned PDFs, text in photos is only what the vision model reads).

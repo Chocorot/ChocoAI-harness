@@ -1,7 +1,7 @@
 # Storage and user isolation
 
-Code: `auth.py` (`uid`, `db_path`, `session_ws`), `harness.py` (`_with_user_db`, `_run`, `_delete`), `db.py`.
-Tests: `ModesTests.test_users_cannot_see_touch_or_resume_each_others_sessions`, `test_user_chat_is_stored_in_their_own_db_and_workspace`.
+Code: `src/core/auth.ts` (`uid`, `dbPath`, `sessionWs`), `src/server/api.ts` (`withUserDb`, `sessionDelete`), `src/server/chat.ts`, `src/core/db.ts`.
+Tests: `src/core/auth.test.ts`, `src/server/api.test.ts` (users cannot see, touch or resume each other's sessions; a chat is stored in the user's own DB and workspace).
 
 ## Layout
 - Signed-in user: `<dir of HARNESS_DB>/users/<uid>/harness.db`, one SQLite file per user, with the usual tables (sessions, messages, usage, audit, automations).
@@ -16,8 +16,8 @@ Tests: `ModesTests.test_users_cannot_see_touch_or_resume_each_others_sessions`, 
 - `DELETE /api/sessions/<id>` deletes the rows and the session directory.
 
 ## Limits (be honest)
-- `run_bash` (allowlisted users, admin) is not confined: it can read other users' files. Everyone else only gets path-confined file tools.
+- `run_bash` (admin, and users with the SSO role `shell` only when `HARNESS_SHELL=unconfined`) is not confined: it can read other users' files and the data volume. Its environment is scrubbed of the server's secrets (auth-and-modes.md). Everyone else only gets path-confined file tools (paths are resolved with `realpath`, so a symlink inside a session folder does not escape it).
 - Each chat row also holds `title`, `title_state` and `effort` (chats.md).
-- Thinking text is not stored yet (planned with the frontend rewrite).
+- Thinking text is not stored yet (the TypeScript rewrite did not add it either).
 - No quota per user for disk or number of sessions yet.
 - The original `harness.db` is not migrated; the manage API (`/manage/*`) still only sees it. Per-user chats are invisible to the dashboard (stats, sessions, errors list) except server errors, which are logged globally.

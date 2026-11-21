@@ -1,0 +1,49 @@
+// Nothing in this repo is compiled ahead of time except by Next's SWC. There is
+// no bare-Node test zone here (unlike chocomail-web's src/lib/dms/) — every
+// consequence of a bug in this repo is a wrong chart or a container that didn't
+// restart, never a locked-out mailbox. So in principle these three options
+// could be dropped.
+//
+// They are kept anyway, because `npm test` still runs under
+// `node --experimental-strip-types` (see package.json) and every file it can
+// reach is subject to the same stripper limits chocomail-web documents:
+//   - allowImportingTsExtensions: relative imports need an explicit `.ts` for
+//     the stripper's resolver.
+//   - verbatimModuleSyntax: the stripper is whitespace-only and cannot elide a
+//     type-only import; without this a missing `type` keyword throws at
+//     runtime instead of failing to compile.
+//   - erasableSyntaxOnly: bans `enum`/parameter properties/namespaces, which
+//     the stripper rejects at load with ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX.
+// Dropping them would require moving the test lane onto a bundler-aware runner
+// (vitest), which is a new dependency this repo does not otherwise need.
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

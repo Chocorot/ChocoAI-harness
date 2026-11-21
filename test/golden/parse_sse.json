@@ -1,0 +1,85 @@
+{
+ "bytes_like_blank": {
+  "events": [],
+  "msg": {
+   "content": null,
+   "role": "assistant"
+  },
+  "usage": {}
+ },
+ "ignores_noise": {
+  "events": [],
+  "msg": {
+   "content": null,
+   "role": "assistant"
+  },
+  "usage": {}
+ },
+ "plain_text": {
+  "events": [
+   {
+    "d": "Hel",
+    "t": "text"
+   },
+   {
+    "d": "lo",
+    "t": "text"
+   }
+  ],
+  "msg": {
+   "content": "Hello",
+   "role": "assistant"
+  },
+  "usage": {
+   "completion_tokens": 2,
+   "prompt_tokens": 5
+  }
+ },
+ "reasoning_and_text": {
+  "events": [
+   {
+    "d": "hmm",
+    "t": "think"
+   },
+   {
+    "d": "more",
+    "t": "think"
+   },
+   {
+    "d": "ok",
+    "t": "text"
+   }
+  ],
+  "msg": {
+   "content": "ok",
+   "role": "assistant"
+  },
+  "usage": {}
+ },
+ "tool_calls_split": {
+  "events": [],
+  "msg": {
+   "content": null,
+   "role": "assistant",
+   "tool_calls": [
+    {
+     "function": {
+      "arguments": "{\"path\":\"a\"}",
+      "name": "read_file"
+     },
+     "id": "t1",
+     "type": "function"
+    },
+    {
+     "function": {
+      "arguments": "{}",
+      "name": "run_bash"
+     },
+     "id": "call_1",
+     "type": "function"
+    }
+   ]
+  },
+  "usage": {}
+ }
+}

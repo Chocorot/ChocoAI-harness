@@ -1,0 +1,152 @@
+{
+ "clean": [
+  [
+   null,
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "schedule.kind must be 'interval' or 'daily'."
+    }
+   }
+  ],
+  [
+   {},
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "schedule.kind must be 'interval' or 'daily'."
+    }
+   }
+  ],
+  [
+   {
+    "kind": "weekly"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "schedule.kind must be 'interval' or 'daily'."
+    }
+   }
+  ],
+  [
+   {
+    "every_min": 5,
+    "kind": "interval"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Repeat every 15 to 10080 minutes."
+    }
+   }
+  ],
+  [
+   {
+    "every_min": 15,
+    "kind": "interval"
+   },
+   {
+    "ok": {
+     "every_min": 15,
+     "kind": "interval"
+    }
+   }
+  ],
+  [
+   {
+    "every_min": 10080,
+    "kind": "interval"
+   },
+   {
+    "ok": {
+     "every_min": 10080,
+     "kind": "interval"
+    }
+   }
+  ],
+  [
+   {
+    "every_min": 10081,
+    "kind": "interval"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Repeat every 15 to 10080 minutes."
+    }
+   }
+  ],
+  [
+   {
+    "every_min": true,
+    "kind": "interval"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Repeat every 15 to 10080 minutes."
+    }
+   }
+  ],
+  [
+   {
+    "every_min": "30",
+    "kind": "interval"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Repeat every 15 to 10080 minutes."
+    }
+   }
+  ],
+  [
+   {
+    "at": "07:30",
+    "kind": "daily"
+   },
+   {
+    "ok": {
+     "at": "07:30",
+     "kind": "daily"
+    }
+   }
+  ],
+  [
+   {
+    "at": "24:00",
+    "kind": "daily"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Daily time must look like 08:30."
+    }
+   }
+  ],
+  [
+   {
+    "at": "7:30",
+    "kind": "daily"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Daily time must look like 08:30."
+    }
+   }
+  ],
+  [
+   {
+    "kind": "daily"
+   },
+   {
+    "err": {
+     "kind": "bad_request",
+     "message": "Daily time must look like 08:30."
+    }
+   }
+  ]
+ ]
+}

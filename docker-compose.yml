@@ -1,4 +1,5 @@
-# Server copy lives in ~/ChocoAI-harness/ next to its .env (BASE_URL, API_KEY, MODEL, HARNESS_TOKEN, HARNESS_SESSION_KEY, HARNESS_SHELL_USERS, HARNESS_TRUST_PROXY=1, see docs/auth-and-modes.md).
+# Server copy lives in ~/ChocoAI-harness/ next to its .env (BASE_URL, API_KEY, MODEL, HARNESS_TOKEN, HARNESS_ADMIN_TOKEN, AUTH_SECRET,
+# SSO_ISSUER, SSO_CLIENT_ID, SSO_CLIENT_SECRET, SSO_REDIRECT_URI, HARNESS_PUBLIC_URL; see docs/auth-and-modes.md and docs/deploy.md).
 services:
   harness:
     container_name: choco-harness
@@ -11,7 +12,8 @@ services:
       HARNESS_TRUST_PROXY: "1"                 # port is published on 127.0.0.1 only; every request comes through our tunnel
     depends_on: [searxng]
     ports: ["127.0.0.1:8421:8080"]  # cloudflared tunnel -> http://localhost:8421
-    mem_limit: 256m
+    init: true
+    mem_limit: 512m                          # Next.js server + SQLite; the Python app needed 256m
     cpus: 1
     labels:
       - com.centurylinklabs.watchtower.enable=true

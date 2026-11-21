@@ -1,11 +1,11 @@
 # Agent mode (plan, look, think, delegate)
 
-Code: `harness.py` (`agent_loop`, `call_tool`, `Run`, `tool_update_plan`, `tool_delegate`, `system_text`). Tests: `AgentModeTests`, `RunningFlagTests`, `ToolTableTests`.
+Code: `src/core/agent.ts` (`agentLoop`, `callTool`, `runAgent`, `toolUpdatePlan`, `toolDelegate`, `systemText`), `src/core/tools.ts` (the tool table). Tests: `src/core/agent.test.ts`, `src/core/tools.test.ts`, `src/server/api.test.ts` (the `running` flag).
 Available to signed-in users and admin. Visitors get plain chat.
 
 ## The loop
 - The model answers or calls tools; every tool result goes back to it; it thinks again. Repeat until it answers without a tool call. This is the "look, think, look, think" loop (ReAct style). It is the same loop as before, now with budgets and two extra tools.
-- There is no mode switch: the model decides. The system prompt gets one hint per allowed tool (`tools.TOOLS[...]["prompt"]`, assembled by `system_text(allow)`), including "for a task with several steps, call `update_plan` first".
+- There is no mode switch: the model decides. The system prompt gets one hint per allowed tool (`tools.ts` `TOOLS[...].prompt`, assembled by `systemText(allow)`), including "for a task with several steps, call `update_plan` first".
 
 ## update_plan(steps)
 - `steps`: list of `{text, status}` with status `todo | doing | done` (plain strings count as todo). Cleaned: max 20 steps, 200 chars each.
@@ -21,7 +21,7 @@ Available to signed-in users and admin. Visitors get plain chat.
 ## Budgets (a run never ends silently)
 | setting | default | stops the run when |
 |---|---|---|
-| `max_turns` | 15 | model calls in the run (CLI `--max-turns` wins) |
+| `max_turns` | 15 | model calls in the run |
 | `max_seconds` | 900 | wall clock, shared with helpers |
 | `max_run_tokens` | 200000 | sum of prompt + reply tokens over all calls (prompts are re-sent each turn) |
 | `delegate_turns` | 8 | model calls of one helper |

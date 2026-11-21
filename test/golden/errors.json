@@ -1,0 +1,210 @@
+{
+ "backoff": [
+  2,
+  6,
+  15
+ ],
+ "body": {
+  "code": "busy",
+  "error": "The AI is busy with other requests. Try again in a moment.",
+  "kind": "busy",
+  "retryable": true,
+  "rid": "abcd1234"
+ },
+ "event": {
+  "code": "busy",
+  "d": "The AI is busy with other requests. Try again in a moment.",
+  "detail": "",
+  "kind": "busy",
+  "msg": "The AI is busy with other requests. Try again in a moment.",
+  "note": "[run failed: busy/busy] The AI is busy with other requests. Try again in a moment. The run queue was full.",
+  "retryable": true,
+  "rid": "abcd1234",
+  "t": "error"
+ },
+ "event_custom": {
+  "code": "http_502",
+  "d": "The model server hit an error.",
+  "detail": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "kind": "upstream_5xx",
+  "msg": "The model server hit an error.",
+  "note": "[run failed: upstream_5xx/http_502] The model server hit an error. The model backend returned a server error.",
+  "retryable": true,
+  "rid": "r1",
+  "t": "error"
+ },
+ "kinds": {
+  "auth": {
+   "auto": false,
+   "hint": "",
+   "msg": "unauthorized",
+   "retryable": false,
+   "status": 401
+  },
+  "bad_request": {
+   "auto": false,
+   "hint": "",
+   "msg": "That request was not valid.",
+   "retryable": false,
+   "status": 400
+  },
+  "busy": {
+   "auto": false,
+   "hint": "The run queue was full.",
+   "msg": "The AI is busy with other requests. Try again in a moment.",
+   "retryable": true,
+   "status": 503
+  },
+  "context_overflow": {
+   "auto": false,
+   "hint": "The conversation exceeded the model context window even after shrinking old tool output.",
+   "msg": "This conversation is too long for the model. Start a new chat.",
+   "retryable": false,
+   "status": 413
+  },
+  "forbidden": {
+   "auto": false,
+   "hint": "",
+   "msg": "You don't have access to that.",
+   "retryable": false,
+   "status": 403
+  },
+  "internal": {
+   "auto": false,
+   "hint": "An internal error stopped the run.",
+   "msg": "Something broke inside the harness.",
+   "retryable": true,
+   "status": 500
+  },
+  "login_unavailable": {
+   "auto": false,
+   "hint": "",
+   "msg": "Sign-in is unavailable right now (the mail server can't be reached). Try again shortly.",
+   "retryable": true,
+   "status": 503
+  },
+  "not_found": {
+   "auto": false,
+   "hint": "",
+   "msg": "Not found.",
+   "retryable": false,
+   "status": 404
+  },
+  "rate_limited": {
+   "auto": false,
+   "hint": "The caller was rate limited.",
+   "msg": "Too many requests. Wait a moment and try again.",
+   "retryable": true,
+   "status": 429
+  },
+  "upstream_4xx": {
+   "auto": false,
+   "hint": "The model backend rejected the request as invalid.",
+   "msg": "The model server rejected the request.",
+   "retryable": false,
+   "status": 502
+  },
+  "upstream_5xx": {
+   "auto": true,
+   "hint": "The model backend returned a server error.",
+   "msg": "The model server hit an error.",
+   "retryable": true,
+   "status": 502
+  },
+  "upstream_auth": {
+   "auto": false,
+   "hint": "The model backend refused the harness credentials.",
+   "msg": "The model server refused our credentials. The admin needs to fix the key.",
+   "retryable": false,
+   "status": 502
+  },
+  "upstream_bad_stream": {
+   "auto": true,
+   "hint": "The model reply stream broke before it finished.",
+   "msg": "The model's reply was cut off or garbled.",
+   "retryable": true,
+   "status": 502
+  },
+  "upstream_down": {
+   "auto": true,
+   "hint": "The model backend was unreachable. Nothing was lost; the user can retry.",
+   "msg": "The AI model server can't be reached right now.",
+   "retryable": true,
+   "status": 502
+  },
+  "upstream_timeout": {
+   "auto": false,
+   "hint": "The model backend timed out. Try a shorter or simpler step.",
+   "msg": "The model took too long to answer.",
+   "retryable": true,
+   "status": 504
+  }
+ },
+ "note": "[run failed: busy/busy] The AI is busy with other requests. Try again in a moment. The run queue was full.",
+ "prefix": "[run failed: ",
+ "upstream_http": [
+  {
+   "body": "",
+   "code": "http_401",
+   "detail": "",
+   "kind": "upstream_auth",
+   "status": 401
+  },
+  {
+   "body": "{}",
+   "code": "http_403",
+   "detail": "{}",
+   "kind": "upstream_auth",
+   "status": 403
+  },
+  {
+   "body": "boom",
+   "code": "http_500",
+   "detail": "boom",
+   "kind": "upstream_5xx",
+   "status": 500
+  },
+  {
+   "body": "slow down",
+   "code": "http_429",
+   "detail": "slow down",
+   "kind": "upstream_5xx",
+   "status": 429
+  },
+  {
+   "body": "bad",
+   "code": "http_400",
+   "detail": "bad",
+   "kind": "upstream_4xx",
+   "status": 400
+  },
+  {
+   "body": "{\"error\":{\"message\":\"Context size exceeded: n_ctx 4096\"}}",
+   "code": "http_400",
+   "detail": "Context size exceeded: n_ctx 4096",
+   "kind": "context_overflow",
+   "status": 400
+  },
+  {
+   "body": "{\"error\":\"maximum context length is 8192 tokens\"}",
+   "code": "http_400",
+   "detail": "maximum context length is 8192 tokens",
+   "kind": "context_overflow",
+   "status": 400
+  },
+  {
+   "body": "no",
+   "code": "http_404",
+   "detail": "no",
+   "kind": "upstream_4xx",
+   "status": 404
+  },
+  {
+   "body": "tokens to keep from initial prompt is greater than context",
+   "code": "http_400",
+   "detail": "tokens to keep from initial prompt is greater than context",
+   "kind": "context_overflow",
+   "status": 400
+  }
+ ]
+}
