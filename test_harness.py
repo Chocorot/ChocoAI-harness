@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import struct
 import tempfile
 import threading
 import time
@@ -1273,12 +1274,14 @@ class StaticTests(SettingsBase):
         for path, ctype in (("/", "text/html"), ("/index.html", "text/html"), ("/app.css", "text/css"), ("/js/app.js", "text/javascript"),
                             ("/js/turn.js", "text/javascript"), ("/vendor/motion.js", "text/javascript"), ("/sw.js", "text/javascript"),
                             ("/manifest.webmanifest", "application/manifest+json"), ("/icons/icon.svg", "image/svg+xml"),
-                            ("/icons/icon-192.png", "image/png"), ("/icons/apple-touch-icon.png", "image/png")):
+                            ("/icons/icon-192.png", "image/png"), ("/icons/apple-touch-icon.png", "image/png"), ("/icons/og.png", "image/png"),
+                            ("/favicon.ico", "image/x-icon"), ("/robots.txt", "text/plain"), ("/sitemap.xml", "application/xml"),
+                            ("/icons/mark.svg", "image/svg+xml"), ("/icons/icon-maskable-512.png", "image/png")):
             status, got, csp, body = self.get(path)
             self.assertEqual((status, got.split(";")[0]), (200, ctype), path)
             self.assertTrue(body, path)
         status, _, csp, body = self.get("/")
-        self.assertIn(b"<title>ChocoAI</title>", body)
+        self.assertIn("<title>ChocoAI", body.decode())
         self.assertIn("script-src 'self'", csp)  # a CSP with no inline scripts is only possible because theme.js is a file
         self.assertNotIn(b"<script>", body)
         self.assertIsNone(self.get("/app.css")[2])  # the policy is sent with the page only
@@ -1297,6 +1300,72 @@ class StaticTests(SettingsBase):
             self.assertEqual(self.get(path)[0], 200, path)  # a missing file would make the service worker install fail
         for f in (harness.WEB / "js").glob("*.js"):
             self.assertIn(f"/js/{f.name}", shell, f.name)  # and a new module must be added to the offline list
+
+    def head(self, host=None, proto=None):
+        conn = http.client.HTTPConnection(self.base.split("//")[1])
+        conn.putrequest("GET", "/", skip_host=True)
+        conn.putheader("Host", self.base.split("//")[1] if host is None else host)
+        if proto:
+            conn.putheader("X-Forwarded-Proto", proto)
+        conn.endheaders()
+        r = conn.getresponse()
+        body = r.read().decode()
+        conn.close()
+        return body
+
+    def test_site_address_is_filled_in_when_served(self):
+        body = self.head("ai.example.test", "https")
+        self.assertNotIn("__SITE__", body)
+        self.assertIn('<link rel="canonical" href="http://ai.example.test/">', body)  # no proxy trusted: the forwarded scheme is ignored
+        with mock.patch.dict(os.environ, {"HARNESS_TRUST_PROXY": "1"}):
+            body = self.head("ai.example.test", "https")
+            self.assertIn('<meta property="og:image" content="https://ai.example.test/icons/og.png">', body)
+            self.assertIn('"url":"https://ai.example.test/"', body)
+        with mock.patch.dict(os.environ, {"HARNESS_PUBLIC_URL": "https://chat.example.org/"}):  # an explicit address beats the headers
+            self.assertIn('href="https://chat.example.org/"', self.head("evil.test", "http"))
+        for evil in ('a"><script>x</script>', "a b", "a<b", "", "a" * 300):  # a Host that isn't a plain name never reaches the page
+            body = self.head(evil)
+            self.assertNotIn("<script>x", body)
+            self.assertIn('<link rel="canonical" href="/">', body)
+        robots = self.get("/robots.txt")[3].decode()
+        self.assertIn("Disallow: /api/", robots)
+        self.assertRegex(robots, r"Sitemap: http://127\.0\.0\.1:\d+/sitemap\.xml")
+        self.assertIn("<loc>http://127.0.0.1", self.get("/sitemap.xml")[3].decode())
+
+    def test_search_and_social_metadata_is_complete_and_points_at_real_files(self):
+        import json
+        body = self.head()
+        meta = dict(re.findall(r'<meta (?:name|property)="([^"]+)" content="([^"]*)"', body))
+        self.assertTrue(10 < len(re.search(r"<title>(.*?)</title>", body).group(1)) <= 60)
+        self.assertTrue(50 < len(meta["description"]) <= 160)
+        for key in ("og:title", "og:description", "og:url", "og:image", "og:image:alt", "og:type", "og:site_name", "twitter:card",
+                    "twitter:image", "twitter:title", "robots", "theme-color", "application-name"):
+            self.assertTrue(meta.get(key), key)
+        self.assertEqual((meta["twitter:card"], meta["og:image:width"], meta["og:image:height"]), ("summary_large_image", "1200", "630"))
+        origin = self.base
+        for key in ("og:image", "twitter:image"):
+            self.assertTrue(meta[key].startswith(origin + "/"), meta[key])
+            status, ctype, _, png = self.get(meta[key][len(origin):])
+            self.assertEqual((status, struct.unpack(">II", png[16:24])), (200, (1200, 630)), key)  # the declared size is the real size
+        ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', body, re.S).group(1))
+        self.assertEqual((ld["@type"], ld["name"], ld["url"]), ("WebApplication", "ChocoAI", origin + "/"))
+        m = json.loads(self.get("/manifest.webmanifest")[3])
+        self.assertTrue({"name", "short_name", "id", "start_url", "display", "icons", "screenshots"} <= set(m))
+        self.assertIn("maskable", [i.get("purpose") for i in m["icons"]])
+        for item in m["icons"] + m["screenshots"]:
+            status, _, _, data = self.get(item["src"])
+            self.assertEqual(status, 200, item["src"])
+            if item["src"].endswith(".png"):
+                w, h = (int(x) for x in item["sizes"].split("x"))
+                self.assertEqual(struct.unpack(">II", data[16:24]), (w, h), item["src"])
+
+    def test_favicon_ico_holds_three_png_sizes(self):
+        data = self.get("/favicon.ico")[3]
+        self.assertEqual(struct.unpack("<HHH", data[:6]), (0, 1, 3))
+        sizes = [struct.unpack("<BBBBHHII", data[6 + 16 * i:22 + 16 * i]) for i in range(3)]
+        self.assertEqual([s[0] for s in sizes], [16, 32, 48])
+        for s in sizes:
+            self.assertEqual(data[s[7]:s[7] + 8], b"\x89PNG\r\n\x1a\n")  # each entry is a real PNG
 
     def test_page_scripts_exist(self):
         html = self.get("/")[3].decode()

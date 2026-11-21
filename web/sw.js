@@ -2,7 +2,7 @@
 // Network first for our own static files, so a deploy shows up on the next open; the cache is only the fallback.
 const CACHE = "choco-harness-shell-v1";
 const SHELL = ["/", "/app.css", "/js/app.js", "/js/md.js", "/js/sse.js", "/js/icons.js", "/js/turn.js", "/js/anim.js", "/js/theme.js", "/js/attach.js",
-  "/vendor/motion.js", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
+  "/vendor/motion.js", "/manifest.webmanifest", "/icons/icon.svg", "/icons/mark.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

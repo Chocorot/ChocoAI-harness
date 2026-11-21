@@ -9,8 +9,8 @@ import { enter, shake, sheetIn, sheetOut, stagger } from "./anim.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const app = $("#app"), col = $("#col"), msgs = $("#msgs"), input = $("#input"), sendBtn = $("#send"), jump = $("#jump");
-const S = { me: null, sessions: [], sid: null, busy: false, polling: false, ctl: null, turn: null, poll: null, history: [], stick: true, install: null, atts: [] };
-const HKEY = "choco.public.chat.v1", TKEY = "choco-harness-theme";
+const S = { me: null, sessions: [], sid: null, busy: false, polling: false, ctl: null, turn: null, poll: null, history: [], stick: true, install: null, atts: [], side: true };
+const HKEY = "choco.public.chat.v1", TKEY = "choco-harness-theme", SKEY = "choco-harness-sidebar";
 const coarse = () => matchMedia("(pointer: coarse)").matches;
 const desktop = () => matchMedia("(min-width: 768px)").matches;
 const user = () => S.me?.capabilities.history === "user";
@@ -80,7 +80,7 @@ function showEmpty() {
   const chips = SUGGESTIONS.filter((s) => !s.needs || can(s.needs));
   const e = el("div", "empty");
   e.id = "empty";
-  e.innerHTML = `<div class="logo">${icon("sparkle", 26)}</div><h2>How can I help?</h2><p>${user() ? "Your chats are saved to your account." : "Ask anything. Your chat stays on this device."}</p><div class="chips"></div>`;
+  e.innerHTML = `<div class="logo"></div><h2>How can I help?</h2><p>${user() ? "What are we working on?" : "Ask anything."}</p><div class="chips"></div>`;
   chips.forEach((s) => { const b = el("button", "chip"); b.type = "button"; b.textContent = s.text; b.addEventListener("click", () => send(s.text)); e.querySelector(".chips").append(b); });
   col.append(e);
   stagger([...e.children], { y: 10 });
@@ -106,7 +106,7 @@ function attChip(a, removable) {
 }
 function newTurn(live = true) {
   dropEmpty();
-  const row = el("div", "msg ai", `<div class="logo">${icon("sparkle", 16)}</div>`);
+  const row = el("div", "msg ai", `<div class="logo"></div>`);
   col.append(row);
   const turn = new Turn(row, { live, onChange: () => scrollBottom(), onRetry: () => retry(turn), onContinue: () => send("continue") });
   turn.row = row;
@@ -475,8 +475,8 @@ const POINTS = [ // shown beside the sign-in form on wide screens
 function showLogin() {
   if (!S.me.capabilities.login) { location.hash = "#/"; return; }
   const root = $("#login-root");
-  root.innerHTML = `<div class="login"><section class="login-l"><button class="iconbtn close" type="button" aria-label="Close">${icon("x", 20)}</button>
-    <div class="login-box"><header><div class="logo">${icon("sparkle", 24)}</div><h2>Sign in</h2><p>Use your mail account.</p></header>
+  root.innerHTML = `<div class="login"><button class="iconbtn close" type="button" aria-label="Close">${icon("x", 20)}</button><section class="login-l">
+    <div class="login-box"><header><div class="logo"></div><h2>Sign in</h2><p>Use your mail account.</p></header>
     <div class="card err" role="alert" hidden>${icon("alert", 18)}<div class="body"></div></div>
     <form class="form"><label class="field">Email<input name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
     <label class="field">Password<input name="password" type="password" autocomplete="current-password" required></label>
@@ -505,16 +505,30 @@ async function refreshMe() {
   applyMode();
   if (user()) await refreshSessions(); else { S.sessions = []; S.history = loadHistory(); }
 }
+// Which header controls exist depends on whether the sidebar is on screen: with it, "new chat" and the account live there
+// and the header only carries the title; without it (phone, or sidebar closed) the header carries them.
+function syncChrome() {
+  const u = user(), wide = desktop(), vis = u && wide && S.side;
+  app.dataset.side = vis ? "open" : "closed";
+  const menu = $("#btn-chats");
+  menu.hidden = !u || vis; menu.innerHTML = icon(wide ? "sidebar" : "menu", 22); menu.setAttribute("aria-label", wide ? "Open sidebar" : "Chats");
+  $("#btn-new").hidden = !u || vis; $("#btn-account").hidden = vis;
+}
+function toggleSide() {
+  S.side = !S.side; store.set(SKEY, S.side ? "1" : "0"); syncChrome();
+  (S.side ? $("#side-toggle") : $("#btn-chats"))?.focus({ preventScroll: true });
+}
 function applyMode() {
   const u = user();
   app.dataset.store = u ? "user" : "client";
+  S.side = store.get(SKEY) !== "0";
   setupAttach();
-  $("#btn-chats").hidden = !u; $("#btn-new").hidden = !u;
   $("#btn-account").innerHTML = S.me.address ? `<span class="avatar" style="width:30px;height:30px;font-size:.85rem">${esc(S.me.address[0])}</span>` : icon("user", 22);
   $("#fine").textContent = u ? "Saved to your account. The assistant can make mistakes." : "Your chat stays on this device. The assistant can make mistakes.";
   const side = $("#side");
-  side.innerHTML = u ? `<div class="side-h"><div class="brand"><div class="logo">${icon("sparkle", 16)}</div>ChocoAI</div>${S.me.capabilities.automations ? `<button class="iconbtn" id="side-auto" type="button" aria-label="Automations">${icon("clock", 20)}</button>` : ""}<button class="iconbtn" id="side-new" type="button" aria-label="New chat">${icon("plus", 20)}</button></div><div class="list" data-chatlist></div><div class="side-f"><button class="me" id="side-me" type="button"><span class="avatar">${esc(S.me.address?.[0] || "?")}</span><span>${esc(S.me.address || "")}</span></button></div>` : "";
-  if (u) { $("#side-auto")?.addEventListener("click", automationsSheet); $("#side-new").addEventListener("click", goNew); $("#side-me").addEventListener("click", accountSheet); fillList($("[data-chatlist]", side)); }
+  side.innerHTML = u ? `<div class="side-h"><div class="brand"><div class="logo"></div>ChocoAI</div>${S.me.capabilities.automations ? `<button class="iconbtn" id="side-auto" type="button" aria-label="Automations">${icon("clock", 20)}</button>` : ""}<button class="iconbtn" id="side-new" type="button" aria-label="New chat">${icon("plus", 20)}</button><button class="iconbtn" id="side-toggle" type="button" aria-label="Close sidebar">${icon("sidebar", 20)}</button></div><div class="list" data-chatlist></div><div class="side-f"><button class="me" id="side-me" type="button"><span class="avatar">${esc(S.me.address?.[0] || "?")}</span><span>${esc(S.me.address || "")}</span></button></div>` : "";
+  if (u) { $("#side-auto")?.addEventListener("click", automationsSheet); $("#side-new").addEventListener("click", goNew); $("#side-toggle").addEventListener("click", toggleSide); $("#side-me").addEventListener("click", accountSheet); fillList($("[data-chatlist]", side)); }
+  syncChrome();
 }
 function goNew() { if (location.hash === "#/" || location.hash === "") newChat(); else location.hash = "#/"; input.focus(); }
 function route(first) {
@@ -535,7 +549,8 @@ function initViewport() {
   vv.addEventListener("resize", fit); vv.addEventListener("scroll", () => window.scrollTo(0, 0)); fit();
 }
 function wire() {
-  $("#btn-chats").innerHTML = icon("menu", 22); $("#btn-new").innerHTML = icon("plus", 22);
+  $("#btn-new").innerHTML = icon("plus", 22);
+  matchMedia("(min-width: 768px)").addEventListener("change", syncChrome);
   jump.innerHTML = `${icon("arrowdown", 16)} Latest`;
   $("#attach").innerHTML = icon("paperclip", 22);
   $("#attach").addEventListener("click", () => $("#file").click());
@@ -545,7 +560,7 @@ function wire() {
   ["dragenter", "dragover"].forEach((t) => wrap.addEventListener(t, (e) => { if (!$("#attach").hidden && e.dataTransfer?.types.includes("Files")) { e.preventDefault(); wrap.classList.add("dropping"); } }));
   ["dragleave", "drop"].forEach((t) => wrap.addEventListener(t, () => wrap.classList.remove("dropping")));
   wrap.addEventListener("drop", (e) => { if (!$("#attach").hidden && e.dataTransfer?.files.length) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
-  $("#btn-chats").addEventListener("click", chatsSheet); $("#btn-new").addEventListener("click", goNew);
+  $("#btn-chats").addEventListener("click", () => (desktop() ? toggleSide() : chatsSheet())); $("#btn-new").addEventListener("click", goNew);
   $("#btn-account").addEventListener("click", accountSheet);
   jump.addEventListener("click", () => { S.stick = true; msgs.scrollTo({ top: msgs.scrollHeight, behavior: "smooth" }); });
   msgs.addEventListener("scroll", onScroll, { passive: true });
@@ -569,9 +584,11 @@ function wire() {
   setBusy(false);
 }
 async function boot() {
+  app.classList.add("boot"); // no sidebar slide on first paint
   wire(); initViewport();
   await refreshMe();
   route(true);
+  requestAnimationFrame(() => requestAnimationFrame(() => app.classList.remove("boot")));
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 boot();

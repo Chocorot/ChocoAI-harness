@@ -4,6 +4,7 @@ const P = {
   stop: "M7 7h10v10H7z",
   plus: "M12 5v14M5 12h14",
   menu: "M4 7h16M4 12h16M4 17h16",
+  sidebar: "M4 5h16v14H4zM9 5v14",
   x: "M6 6l12 12M18 6L6 18",
   copy: "M9 9h10v10H9zM5 15V5h10",
   check: "M5 12.5l4.5 4.5L19 7.5",

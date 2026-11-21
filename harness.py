@@ -419,7 +419,10 @@ def manifest(busy):
 
 WEB = Path(__file__).with_name("web")
 TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-         ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png"}
+         ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+         ".txt": "text/plain; charset=utf-8", ".xml": "application/xml"}
+TEMPLATED = (".html", ".txt", ".xml")  # these carry the placeholder __SITE__, replaced by the site's own address when served
+IMAGES = (".png", ".svg", ".ico")  # may be cached for a day; code and pages are always revalidated
 # no inline scripts anywhere (theme.js is a file), so scripts may only come from us; inline style attributes are allowed
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
        "manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -562,6 +565,19 @@ def make_server(host, port, ws, max_turns, scheduler=False):
                     return fwd
             return self.client_address[0]
 
+        def _site(self):
+            """This site's own address for canonical and social-preview URLs. HARNESS_PUBLIC_URL wins; otherwise it is built from
+            the Host header (and X-Forwarded-Proto when HARNESS_TRUST_PROXY=1). A Host that is not plainly a host name gives
+            "" (relative URLs) instead of putting attacker-chosen text into the page."""
+            env = os.environ.get("HARNESS_PUBLIC_URL", "").strip().rstrip("/")
+            if env:
+                return env
+            host = self.headers.get("Host", "")
+            if not re.fullmatch(r"[A-Za-z0-9.\-]{1,253}(:\d{1,5})?", host):
+                return ""
+            fwd = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip() if os.environ.get("HARNESS_TRUST_PROXY") == "1" else ""
+            return f"{'https' if fwd == 'https' else 'http'}://{host}"
+
         def _same_origin(self):
             """Cookie requests must come from our own page (on top of SameSite=Lax)."""
             origin = self.headers.get("Origin")
@@ -641,7 +657,12 @@ def make_server(host, port, ws, max_turns, scheduler=False):
             if path == "/health":
                 return self._send(200, {"ok": True})
             if (f := static_file(path)):  # the public app; the API decides what a caller may do
-                return self._send(200, f.read_bytes(), TYPES[f.suffix], headers=[("Cache-Control", "no-cache"), *([("Content-Security-Policy", CSP)] if f.suffix == ".html" else [])])
+                body = f.read_bytes()
+                if f.suffix in TEMPLATED:
+                    body = body.replace(b"__SITE__", self._site().encode())
+                return self._send(200, body, TYPES[f.suffix], headers=[
+                    ("Cache-Control", "public, max-age=86400" if f.suffix in IMAGES else "no-cache"),
+                    *([("Content-Security-Policy", CSP)] if f.suffix == ".html" else [])])
             if path == "/api/me":
                 return self._me()
             if path == "/api/sessions":

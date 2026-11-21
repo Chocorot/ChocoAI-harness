@@ -37,6 +37,7 @@ Adding a JS module: add it to `SHELL` in `sw.js` (a test fails otherwise).
 ## App-feel rules (so it does not feel like a website)
 - The page never scrolls: `html, body { overflow: hidden; overscroll-behavior: none }`, the app is `100dvh` (or the visual viewport height while the keyboard is open, set from `visualViewport`). Only the message list and sheets scroll.
 - Composer is pinned at the bottom with `env(safe-area-inset-*)`; textarea `font-size: 16px` (iOS does not zoom on focus); Enter sends on desktop, inserts a newline on touch devices.
+- Desktop sidebar (signed in): a button inside it closes it, the header then shows an open-sidebar button, and the choice is remembered (`choco-harness-sidebar`). Phones have no sidebar: the menu button opens the Chats sheet.
 - Phones: panels are **bottom sheets** with a grab handle (drag down to close, backdrop tap, Esc); desktop: centred dialogs and a permanent sidebar.
 - Touch targets are 44 px; press feedback is a small scale (`:active`), hover styles only inside `@media (hover: hover)`; no hover-only actions; no native `alert/confirm/prompt` (two-tap buttons and toasts instead).
 - `-webkit-tap-highlight-color: transparent`, `touch-action: manipulation`, chrome (buttons) is not text-selectable, message text is.
@@ -65,3 +66,14 @@ Source: its `docs/design-principles.md`, `ui-design-system.md`, `ui-motion.md`, 
 - Thinking text is not stored with saved messages (needs a stored field and stripping it from what is sent to the model).
 - No regenerate for saved chats (the server has no "drop last reply" yet); visitors have it.
 - No tab bar or edge-swipe drawer: the header buttons open sheets instead.
+
+## Consistency rules (checked by eye on every change; keep them true)
+- The header is a 3-column grid (`1fr auto 1fr`): the title is **always centred** in the main pane, whatever buttons are on either side.
+- **No control twice on screen.** With the sidebar open (desktop, signed in) "new chat" and the account live in the sidebar and the header only carries the title; with it closed, or on a phone, the header carries menu, new chat and account (`syncChrome` in `app.js`).
+- Header and sidebar header have the **same height**, so their bottom lines meet.
+- **One hover/press overlay** for every control (`--hover`, `--press`, a translucent layer drawn over whatever background the control has), so buttons, chips, rows, attachment chips and menu rows all react the same way. Hover styles only inside `@media (hover: hover)`.
+- Controls inside the pill-shaped composer are **round** (attach, send); the disabled send button is neutral grey, not a faded accent.
+- Row actions (delete) appear on hover/focus on hover-capable devices and are always visible on touch.
+- No sentence appears twice on one screen (the privacy line lives only under the composer).
+- Suggestion chips are equal-width grid cells.
+- The brand tile is the same teal tile with `icons/mark.svg` in light and dark, everywhere (`.logo`).

@@ -10,6 +10,7 @@
   --up: oklch(0.62 0.15 155); --degraded: oklch(0.75 0.16 60); --down: oklch(0.577 0.22 27); --unknown: oklch(0.58 0.14 275);
   --user-bubble: oklch(0.94 0.02 200);
   --radius: 0.5rem; --radius-lg: 0.9rem;
+  --hover: color-mix(in oklab, var(--foreground) 7%, transparent); --press: color-mix(in oklab, var(--foreground) 12%, transparent); /* one overlay for every hover/press, so any surface reacts the same way */
   --dur-fast: 0.15s; --dur-base: 0.2s; --dur-slow: 0.3s; --ease: cubic-bezier(0, 0, 0.2, 1);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -56,21 +57,34 @@ input, textarea { font: inherit; color: inherit; }
 
 /* ---- shell ---- */
 #app { height: var(--app-h, 100dvh); display: flex; overflow: hidden; }
-.side { display: none; width: 296px; flex: none; flex-direction: column; background: var(--sidebar); border-right: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
+.side { display: none; width: 296px; flex: none; flex-direction: column; background: var(--sidebar); border-right: 1px solid var(--border); }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
-@media (min-width: 768px) { #app[data-store="user"] .side { display: flex; } }
+@media (min-width: 768px) { /* the sidebar slides away instead of disappearing; phones use the Chats sheet instead */
+  #app[data-store="user"] .side { display: flex; margin-left: -296px; visibility: hidden; transition: margin-left var(--dur-slow) var(--ease), visibility 0s var(--dur-slow); }
+  #app[data-store="user"][data-side="open"] .side { margin-left: 0; visibility: visible; transition: margin-left var(--dur-slow) var(--ease), visibility 0s; }
+}
+#app.boot .side { transition: none !important; }
 .top {
-  flex: none; display: flex; align-items: center; gap: 4px; min-height: calc(52px + env(safe-area-inset-top));
+  flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; min-height: calc(52px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
   border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--background) 88%, transparent);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); z-index: 2;
 }
-.top h1 { flex: 1; margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top h1 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100vw - 220px); /* the two side groups are equal columns, so the title is truly centred; this keeps a long title from squeezing them */ }
+.top .l, .top .r { display: flex; align-items: center; gap: 4px; min-width: 0; } .top .r { justify-content: flex-end; }
 .brand { display: flex; align-items: center; gap: 8px; }
-.logo { width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: var(--primary-fg); display: grid; place-items: center; flex: none; }
+.logo { width: 28px; height: 28px; border-radius: 8px; flex: none; /* the brand tile: icons/mark.svg on the brand teal, the same in light and dark */
+  background: url("/icons/mark.svg") center / 78% no-repeat, linear-gradient(#2fa8b0, #16727a); }
 .iconbtn { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--foreground); transition: background var(--dur-fast), transform var(--dur-fast); }
-.iconbtn:active { transform: scale(0.92); background: var(--muted); }
-@media (hover: hover) { .iconbtn:hover { background: var(--muted); } }
+/* hover and press: the same translucent overlay on every control, whatever its own background */
+.iconbtn:active, .chip:active, .btn:not(.primary):active, .row .open:active, .me:active, .att:active, .copy:active, .seg button:active, .auto-h .t:active { background-image: linear-gradient(var(--press), var(--press)); }
+.iconbtn:active { transform: scale(0.92); }
+@media (hover: hover) {
+  .iconbtn:hover, .chip:hover, .btn:not(.primary):not(.armed):hover, .row:not([data-on="true"]) .open:hover, .me:hover, .att:hover, .copy:hover, .seg button:not([aria-pressed="true"]):hover, .row .del:hover, .auto-h .t:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
+  .btn.primary:hover, .send:not(:disabled):hover { filter: brightness(1.08); }
+  .row .del { opacity: 0; transition: opacity var(--dur-fast); }
+  .row:hover .del, .row:focus-within .del, .row .del.armed { opacity: 1; }
+}
 .btn { min-height: 44px; padding: 0 16px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 500; border: 1px solid var(--border); background: var(--card); transition: background var(--dur-fast), transform var(--dur-fast), opacity var(--dur-fast); }
 .btn:active { transform: scale(0.97); }
 .btn.primary { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
@@ -78,8 +92,6 @@ input, textarea { font: inherit; color: inherit; }
 .btn.danger.armed { background: var(--destructive); color: var(--primary-fg); border-color: transparent; }
 .btn:disabled { opacity: 0.55; pointer-events: none; }
 .btn.wide { width: 100%; }
-.only-mobile { display: grid; }
-@media (min-width: 768px) { #app[data-store="user"] .only-mobile { display: none; } }
 
 /* ---- messages ---- */
 .msgs-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
@@ -97,9 +109,9 @@ input, textarea { font: inherit; color: inherit; }
 .empty .logo { width: 52px; height: 52px; border-radius: 16px; margin-bottom: 10px; }
 .empty h2 { margin: 0; font-size: 1.4rem; letter-spacing: -0.02em; }
 .empty p { margin: 0; color: var(--muted-fg); max-width: 34ch; }
-.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; max-width: 560px; }
-.chip { min-height: 44px; padding: 8px 14px; border-radius: 22px; border: 1px solid var(--border); background: var(--card); font-size: 0.9rem; text-align: left; transition: transform var(--dur-fast), background var(--dur-fast); }
-.chip:active { transform: scale(0.97); background: var(--muted); }
+.chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 8px; margin-top: 18px; width: 100%; max-width: 560px; }
+.chip { min-height: 48px; padding: 8px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); font-size: 0.9rem; text-align: left; display: flex; align-items: center; transition: transform var(--dur-fast); }
+.chip:active { transform: scale(0.98); }
 
 /* ---- markdown ---- */
 .md > * + * { margin-top: 0.7em; }
@@ -193,8 +205,8 @@ input, textarea { font: inherit; color: inherit; }
 .composer textarea::placeholder { color: var(--muted-fg); }
 .send { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: var(--primary-fg); display: grid; place-items: center; transition: transform var(--dur-fast), opacity var(--dur-fast); }
 .send:active { transform: scale(0.9); }
-.send:disabled { opacity: 0.35; }
-.attach { flex: none; color: var(--muted-fg); }
+.send:disabled { background: var(--muted); color: var(--muted-fg); }
+.attach { flex: none; color: var(--muted-fg); border-radius: 50%; } /* round like the send button, so it fits the pill-shaped bar */
 .atts { max-width: 760px; margin: 0 auto 8px; display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; -webkit-overflow-scrolling: touch; }
 .att { position: relative; flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 6px 0 6px; max-width: 230px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 0.82rem; color: inherit; text-decoration: none; }
 .att .th { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; background: var(--muted); display: grid; place-items: center; color: var(--muted-fg); }
@@ -207,7 +219,7 @@ input, textarea { font: inherit; color: inherit; }
 .fine { max-width: 760px; margin: 6px auto 0; text-align: center; font-size: 0.72rem; color: var(--muted-fg); }
 
 /* ---- sidebar / lists ---- */
-.side-h { display: flex; align-items: center; gap: 8px; padding: 12px; }
+.side-h { display: flex; align-items: center; gap: 4px; min-height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0 14px; border-bottom: 1px solid var(--border); } /* same height as the top bar, so the two lines meet */
 .side-h .brand { flex: 1; font-weight: 600; }
 .list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
 .row { display: flex; align-items: center; gap: 4px; border-radius: 12px; min-height: 52px; }
@@ -253,7 +265,7 @@ input, textarea { font: inherit; color: inherit; }
 .login { position: absolute; inset: 0; z-index: 30; display: grid; background: var(--background); overflow-y: auto; }
 @media (min-width: 1024px) { .login { grid-template-columns: 1fr 1fr; } }
 .login-l { position: relative; display: flex; flex-direction: column; justify-content: center; padding: calc(32px + env(safe-area-inset-top)) 20px calc(32px + env(safe-area-inset-bottom)); }
-.login-l .close { position: absolute; top: calc(8px + env(safe-area-inset-top)); right: 8px; }
+.login > .close { position: absolute; z-index: 2; top: calc(8px + env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
 .login-box { width: 100%; max-width: 24rem; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 .login-box header { text-align: center; } .login-box header .logo { width: 44px; height: 44px; border-radius: 12px; margin: 0 auto 12px; }
 .login-box h2 { margin: 0; font-size: 1.5rem; letter-spacing: -0.02em; } .login-box header p { margin: 4px 0 0; color: var(--muted-fg); font-size: 0.92rem; }
@@ -286,4 +298,3 @@ input, textarea { font: inherit; color: inherit; }
 .field textarea, .field select { min-height: 46px; padding: 10px 14px; border: 1px solid var(--input); border-radius: 12px; background: var(--card); font-size: 16px; font-weight: 400; outline: 0; resize: vertical; }
 .field select { padding: 0 14px; } .field input[type="time"] { min-width: 0; }
 .field textarea:focus, .field select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 25%, transparent); }
-.side-h .iconbtn + .iconbtn { margin-left: -4px; }
