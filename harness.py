@@ -24,7 +24,7 @@ import runq
 import settings
 import tools
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
 MAX_BODY = 1_000_000  # bytes accepted on /task
 BULKY = {"read_file", "web_fetch", "web_search"}  # results old enough to be re-fetched are replaced by a stub when compacting
@@ -410,6 +410,25 @@ def manifest(busy):
             "settings": settings.manifest(), "stats": stats}
 
 
+WEB = Path(__file__).with_name("web")
+TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+         ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png"}
+# no inline scripts anywhere (theme.js is a file), so scripts may only come from us; inline style attributes are allowed
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+       "manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
+
+def static_file(path):
+    """The file under web/ for a URL path, or None. Only known file types, no dotfiles, nothing outside web/, no web/test."""
+    rel = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
+    root = WEB.resolve()
+    p = (root / rel).resolve()
+    if p.suffix not in TYPES or not p.is_file() or not p.is_relative_to(root):
+        return None
+    parts = p.relative_to(root).parts
+    return None if parts[0] == "test" or any(x.startswith(".") for x in parts) else p
+
+
 class ClientGone(Exception):
     """The browser left while its run was still waiting in line: drop it quietly."""
 
@@ -443,7 +462,6 @@ def keepalive(sse, stop):
 
 def make_server(host, port, ws, max_turns):
     queue = runq.RunQueue(lambda: settings.get("max_queue"))  # one agent run at a time: the local model serves one stream
-    page = Path(__file__).with_name("index.html")
     public_hits, login_fails = auth.Throttle(), auth.Throttle()  # per server, so tests stay isolated
     active = set()  # (address, session id) of runs that are executing now, so a page that came back can tell
 
@@ -590,8 +608,8 @@ def make_server(host, port, ws, max_turns):
                 return self._manage("GET")
             if path == "/health":
                 return self._send(200, {"ok": True})
-            if path in ("/", "/index.html") and page.exists():  # public page; the API decides what a caller may do
-                return self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+            if (f := static_file(path)):  # the public app; the API decides what a caller may do
+                return self._send(200, f.read_bytes(), TYPES[f.suffix], headers=[("Cache-Control", "no-cache"), *([("Content-Security-Policy", CSP)] if f.suffix == ".html" else [])])
             if path == "/api/me":
                 return self._me()
             if path == "/api/sessions":

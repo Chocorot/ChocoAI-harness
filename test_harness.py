@@ -3,6 +3,7 @@ import http.server
 import io
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -1240,6 +1241,58 @@ class RunningFlagTests(ModesTests):
         th.join(3)
         end = self.api("GET", f"/api/sessions/{sid}", cookie=alice)[1]
         self.assertEqual((end["running"], end["messages"][-1]["content"]), (False, "finished"))
+
+
+class StaticTests(SettingsBase):
+    """The app files under web/ are served; nothing else is."""
+    def setUp(self):
+        super().setUp()
+        srv = harness.make_server("127.0.0.1", 0, Path(self.t.name), None)
+        threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        self.base = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def get(self, path):
+        conn = http.client.HTTPConnection(self.base.split("//")[1])
+        conn.request("GET", path)  # http.client sends the path as is, so traversal attempts reach the server unchanged
+        r = conn.getresponse()
+        body = r.read()
+        conn.close()
+        return r.status, r.getheader("Content-Type"), r.getheader("Content-Security-Policy"), body
+
+    def test_app_files_have_the_right_types(self):
+        for path, ctype in (("/", "text/html"), ("/index.html", "text/html"), ("/app.css", "text/css"), ("/js/app.js", "text/javascript"),
+                            ("/js/turn.js", "text/javascript"), ("/vendor/motion.js", "text/javascript"), ("/sw.js", "text/javascript"),
+                            ("/manifest.webmanifest", "application/manifest+json"), ("/icons/icon.svg", "image/svg+xml"),
+                            ("/icons/icon-192.png", "image/png"), ("/icons/apple-touch-icon.png", "image/png")):
+            status, got, csp, body = self.get(path)
+            self.assertEqual((status, got.split(";")[0]), (200, ctype), path)
+            self.assertTrue(body, path)
+        status, _, csp, body = self.get("/")
+        self.assertIn(b"<title>ChocoAI</title>", body)
+        self.assertIn("script-src 'self'", csp)  # a CSP with no inline scripts is only possible because theme.js is a file
+        self.assertNotIn(b"<script>", body)
+        self.assertIsNone(self.get("/app.css")[2])  # the policy is sent with the page only
+
+    def test_nothing_else_is_served(self):
+        for path in ("/vendor/README.md", "/test/logic.test.mjs", "/js/", "/js", "/nope.js", "/.git/config", "/js/.hidden.js",
+                     "/../harness.py", "/js/../../harness.py", "/%2e%2e/harness.py", "/js/%2e%2e/%2e%2e/harness.py", "//etc/passwd",
+                     "/harness.py", "/web/js/app.js"):
+            self.assertEqual(self.get(path)[0], 404, path)
+
+    def test_every_module_the_shell_caches_exists(self):
+        sw = harness.WEB.joinpath("sw.js").read_text()
+        shell = re.findall(r'"(/[^"]*)"', sw.split("const SHELL = [")[1].split("]")[0])
+        self.assertIn("/js/app.js", shell)
+        for path in shell:
+            self.assertEqual(self.get(path)[0], 200, path)  # a missing file would make the service worker install fail
+        for f in (harness.WEB / "js").glob("*.js"):
+            self.assertIn(f"/js/{f.name}", shell, f.name)  # and a new module must be added to the offline list
+
+    def test_page_scripts_exist(self):
+        html = self.get("/")[3].decode()
+        for src in re.findall(r'(?:src|href)="(/[^"]+)"', html):
+            self.assertEqual(self.get(src)[0], 200, src)
 
 
 if __name__ == "__main__":

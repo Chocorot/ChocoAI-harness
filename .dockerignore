@@ -4,3 +4,4 @@ harness.db*
 .git/
 .env
 __pycache__/
+web/test/

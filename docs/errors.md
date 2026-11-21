@@ -27,7 +27,7 @@ The backend's own HTTP error body is read (bounded) and kept in `detail`; contex
 
 ## What the user sees
 - Non-stream `/task`: HTTP status from the table and `{"error": msg, "kind", "code", "retryable", "rid"}`.
-- Stream: a terminal SSE event `{"t":"error","kind","code","msg","retryable","detail","rid","note","d"}` (`d` = `msg`, for the old page). `rid` is an 8-char request id, also in the log: quote it when reporting a problem.
+- Stream: a terminal SSE event `{"t":"error","kind","code","msg","retryable","detail","rid","note","d"}` (`d` = `msg`, kept for simple clients). `rid` is an 8-char request id, also in the log: quote it when reporting a problem.
 - `{"t":"retrying","attempt","in","kind","msg","reset"}` before each automatic retry. `reset:true` means the reply already started: the page must discard the half-streamed text.
 - Tool failures stay in the stream as `result` events with `ok:false`.
 
@@ -49,5 +49,5 @@ The backend's own HTTP error body is read (bounded) and kept in `detail`; contex
 - `GET /manage/errors?limit=N` (admin token) returns them; `/manage/manifest` `stats.errors` is the count.
 
 ## Known gaps
-- The current `index.html` shows only the message text of an error (no Retry button, ignores `retrying` and `queued`). A mid-stream auto-retry can show duplicated text there. Fixed by the frontend rewrite (phase 4).
+- The app shows `error` events as cards (message, reference, Try again), `retrying` as a status line with a countdown, `queued` as "Waiting in line". A mid-stream retry with `reset:true` drops the half-streamed reply.
 - CLI: failures exit with `message [kind/code] (session N saved ...)`; there is no `--retry` flag.

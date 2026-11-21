@@ -27,7 +27,7 @@ Code: `harness.py` (`make_server`, `Sse`, `keepalive`, `run_agent`), `runq.py`. 
 
 Events from a delegated helper carry an extra `"sub": <call id>` (`status`, `think`, `text`, `tool`, `result`, `retrying`).
 
-A comment line `: ka` is sent every 10 s (`harness.KEEPALIVE`). Pages ignore it. It stops Cloudflare and other proxies from cutting a stream that is silent during a long prefill or a model load (about 22 s to the first token on lyna).
+A comment line `: ka` is sent every 10 s (`harness.KEEPALIVE`). The app ignores it (see `sse.js`). It stops Cloudflare and other proxies from cutting a stream that is silent during a long prefill or a model load (about 22 s to the first token on lyna).
 
 ## Run queue (`runq.RunQueue`)
 - One run at a time (the local model serves one stream). Others wait in line, ordered by priority then arrival (`prio` comes from `auth.MODES`: admin 0, users 1, visitors 2; automations will sit between users and visitors).

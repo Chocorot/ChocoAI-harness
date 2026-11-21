@@ -1,7 +1,7 @@
 # ChocoAI harness
 
 Tiny coding-agent loop for small-context (16K) OpenAI-compatible models such as LM Studio.
-Python 3.11+ standard library only. About 35 MB RSS idle. State lives in one SQLite file.
+Python 3.11+ standard library only (the web UI is plain files plus one vendored animation library). About 35 MB RSS idle. State lives in one SQLite file.
 
 | File | Role |
 |---|---|
@@ -11,7 +11,7 @@ Python 3.11+ standard library only. About 35 MB RSS idle. State lives in one SQL
 | `auth.py` | Sign-in with the DMS mailbox (IMAP), signed cookie, the modes table, throttles, per-user storage paths ([docs/auth-and-modes.md](docs/auth-and-modes.md), [docs/storage-isolation.md](docs/storage-isolation.md)) |
 | `errors.py` | The table of failure kinds: what the user sees, what the model is told, what is retried ([docs/errors.md](docs/errors.md)) |
 | `runq.py` | Bounded run queue: one run at a time, the rest wait in line ([docs/chat-streaming.md](docs/chat-streaming.md)) |
-| `index.html` | Chat web page served at `/` (HTML+JS, no build step) |
+| `web/` | The app UI served at `/`: HTML, CSS and ES modules, no build step, installable PWA ([docs/pwa-and-ui-design.md](docs/pwa-and-ui-design.md)). Tests: `node --test web/test` |
 | `settings.py` | The settings table (system prompt, model, max turns, compaction, temperature, max tokens): validation, JSON file next to the DB, manifest |
 | `db.py` | SQLite (`harness.db`): sessions, messages, token usage, tool audit log |
 | `test_harness.py` | Offline tests: `python3 -m unittest test_harness` |
@@ -45,13 +45,11 @@ harness.py [goal] [--session ID] [--workspace DIR] [--auto-approve]
 
 ## HTTP mode, web chat and health checks
 
-`--serve` also serves a chat page at `/`: streams tokens live, shows the model's thinking and tool calls in
-collapsible blocks, and keeps chats in the browser's `localStorage` (no accounts; clearing site data deletes
-them; the server keeps the model-side history per session in `harness.db`). Enter the access token once via
-"Access token…" in the sidebar. The page itself is public, `/task` is what the token protects.
-Thinking is shown only if the backend returns it as `reasoning_content` (LM Studio: enable "separate
-reasoning_content and content"); it is displayed but never stored in history. "Stop" only detaches the browser; the
-server finishes the current run.
+`--serve` also serves the web app at `/` (files in `web/`, an installable PWA): public visitors chat with no tools and keep one chat in
+their browser; signed-in users get saved chats, tools, web search and plans; the model's thinking, tool calls, plan and errors are shown live.
+Details: [docs/pwa-and-ui-design.md](docs/pwa-and-ui-design.md). Thinking is shown only if the backend returns it as `reasoning_content`
+(LM Studio: enable "separate reasoning_content and content") or writes `<think>` tags; it is never stored in history. "Stop" only detaches the
+browser; the server finishes the current run.
 
 ```bash
 curl -s http://localhost:1235/v1/models                      # backend alive? (LM Studio)
@@ -71,7 +69,7 @@ Events, the queue and keepalive: [docs/chat-streaming.md](docs/chat-streaming.md
 One agent run at a time (others wait in a line of at most `max_queue`, then get a `busy` answer; `/health` and `/` stay responsive). `/task` executes shell commands. Set `HARNESS_TOKEN` and send
 `-H "Authorization: Bearer $HARNESS_TOKEN"` on `/task` (`/health` stays open). `/task` does not exist (404) unless `HARNESS_TOKEN` is set, so there is no way to run it open by accident (`HARNESS_OPEN` was removed in v0.4.0).
 Visitors and signed-in users use `/api/*` instead: visitors chat with no tools, signed-in users (any DMS mailbox, `HARNESS_SESSION_KEY` set) get saved chats in their own DB and workspace, and `HARNESS_SHELL_USERS` also get the shell.
-See [docs/auth-and-modes.md](docs/auth-and-modes.md). The page served at `/` is still the old one and only knows `/task` with a token; the new app UI is phase 4 of the rework.
+See [docs/auth-and-modes.md](docs/auth-and-modes.md).
 
 ## Settings and the manage API (for the status dashboard)
 

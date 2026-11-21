@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ChocoAI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="description" content="Chat with the ChocoAI assistant">
+<meta name="theme-color" content="#fcfdfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ChocoAI">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/app.css">
+<script src="/js/theme.js"></script>
+</head>
+<body>
+<div id="app" data-store="client">
+  <aside class="side" id="side" aria-label="Chats"></aside>
+  <main class="main">
+    <header class="top">
+      <button class="iconbtn only-mobile" id="btn-chats" aria-label="Chats" hidden></button>
+      <h1 id="title"><span class="brand" style="justify-content:center">ChocoAI</span></h1>
+      <button class="iconbtn" id="btn-new" aria-label="New chat" hidden></button>
+      <button class="iconbtn" id="btn-account" aria-label="Account"></button>
+    </header>
+    <div class="msgs-wrap">
+      <div class="msgs" id="msgs">
+        <div class="col" id="col">
+          <div class="empty" id="empty">
+            <div class="logo" aria-hidden="true"></div>
+            <h2>How can I help?</h2>
+            <p>Ask anything. Your chat stays on this device.</p>
+          </div>
+        </div>
+      </div>
+      <button class="jump" id="jump" type="button" hidden></button>
+    </div>
+    <div class="composer-wrap" id="composer-wrap">
+      <form class="composer" id="composer" autocomplete="off">
+        <label class="sr" for="input">Message</label>
+        <textarea id="input" rows="1" placeholder="Message ChocoAI" enterkeyhint="send" autocapitalize="sentences"></textarea>
+        <button class="send" id="send" type="submit" aria-label="Send" disabled></button>
+      </form>
+      <div class="fine" id="fine"></div>
+    </div>
+    <div id="login-root"></div>
+  </main>
+</div>
+<div id="sheet-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+<noscript><p style="padding:24px;text-align:center">ChocoAI needs JavaScript.</p></noscript>
+<script src="/vendor/motion.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

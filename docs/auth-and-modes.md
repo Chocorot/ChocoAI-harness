@@ -54,6 +54,6 @@ A new tier = a new row. Tools are limited twice: the schemas sent to the model, 
 | `HARNESS_TRUST_PROXY`, `HARNESS_INSECURE_COOKIES` | see above |
 | `HARNESS_OPEN` | **removed**: the host/token start-up guard is gone because `/task` now refuses to exist without a token |
 
-## Not done yet
-- The page (`index.html`) is still the old one and only speaks `/task` with a token. Visitors cannot use public chat from it until the frontend rewrite (phase 4).
-- Whether `mail.chocorot.net:993` is reachable from the harness host is not checked. Run one real sign-in after deploying.
+## Not checked yet
+- Whether `mail.chocorot.net:993` is reachable from the harness host. Run one real sign-in after deploying.
+- The sign-in and chat screens are in the app (pwa-and-ui-design.md); the old token page is gone, so `/task` is only for scripts.
