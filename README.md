@@ -28,7 +28,7 @@ Model backend defaults: `BASE_URL=http://localhost:1235/v1`, `API_KEY=lm-studio`
 ## Who can do what
 
 - **Visitors** chat with no tools; the chat stays in their browser.
-- **Signed in** (SSO role `user` for client `ai`): saved chats in their own DB and workspace, file tools, web search, plans, attachments, scheduled prompts.
+- **Signed in** (SSO role `user` for client `ai`, and on the `allowed_users` list when one is set in the dashboard): saved chats in their own DB and workspace, file tools, web search, plans, attachments, scheduled prompts.
 - **Shell** (`run_bash`): admin only (`/task`). The SSO role `shell` only gets it when `HARNESS_SHELL=unconfined` is set, because there is no sandbox.
 - Details: [docs/auth-and-modes.md](docs/auth-and-modes.md), [docs/storage-isolation.md](docs/storage-isolation.md).
 

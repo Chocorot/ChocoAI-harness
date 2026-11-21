@@ -44,6 +44,26 @@ export function checkPassword(pw: unknown): string {
   return pw
 }
 
+// ---- who may sign in (the `allowed_users` setting, edited in the status dashboard) -------------------------------------------
+const ENTRY = /^(@[a-z0-9.-]+\.[a-z]{2,}|[a-z0-9._%+-]{1,64}@[a-z0-9.-]+\.[a-z]{2,})$/
+
+/** One entry per line, comma or space separated, lower-cased. An entry is an address, or `@domain` for every address of a domain. */
+export const parseAllowList = (text: unknown): string[] => (typeof text === 'string' ? text.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean) : [])
+
+/** Error text for a list that cannot be saved, else null. */
+export function allowListError(text: string): string | null {
+  const bad = parseAllowList(text).find((e) => !ENTRY.test(e))
+  return bad ? `has an entry that is not an email address or @domain: ${bad.slice(0, 40)}` : null
+}
+
+/** An empty list means "everyone the SSO lets in"; otherwise only listed addresses (or whole listed domains). */
+export function isAllowed(address: string, list: unknown): boolean {
+  const l = parseAllowList(list)
+  if (!l.length) return true
+  const a = address.toLowerCase()
+  return l.includes(a) || l.includes(a.slice(a.lastIndexOf('@')))
+}
+
 export const isAddress = (a: unknown): a is string => typeof a === 'string' && ADDR.test(a)
 
 /**

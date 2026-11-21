@@ -6,6 +6,7 @@
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { allowListError } from './auth.ts'
 
 export const SYSTEM_PROMPT =
   "You are an agent working in a workspace directory. Complete the user's goal with the tools you are given. Rules: " +
@@ -31,6 +32,8 @@ export interface Field {
   optional?: boolean
   min?: number
   max?: number
+  /** Extra check for text fields: an error text, or null when fine. */
+  validate?: (v: string) => string | null
   help: string
 }
 
@@ -54,6 +57,7 @@ export const FIELDS: Field[] = [
   { key: 'public_max_chars', label: 'Public history size (characters)', type: 'int', default: 24000, min: 500, max: 200000, help: 'Older messages of a public chat are dropped above this size. The window is 16K tokens.' },
   { key: 'public_max_tokens', label: 'Public max reply tokens', type: 'int', default: 1024, min: 16, max: 32768, help: "Caps the length of a public reply so one visitor can't hold the model for minutes." },
   { key: 'vision', label: 'Photo input (vision)', type: 'bool', default: false, help: 'Let signed-in users attach a photo. Turn on only when the model on the backend can look at images (a vision model); otherwise it answers nonsense or errors.' },
+  { key: 'allowed_users', label: 'Who may sign in', type: 'text', default: null, optional: true, min: 0, max: 4000, validate: allowListError, help: 'One email address per line, or @domain for a whole domain. Empty = everyone the Choco SSO lets in (they need the role user for the app ai). With a list, only these addresses can use the signed-in features; removing one takes effect on their next request. Visitors are not affected.' },
   { key: 'temperature', label: 'Temperature', type: 'float', default: null, optional: true, min: 0, max: 2, help: 'Empty = backend default.' },
   { key: 'max_tokens', label: 'Max reply tokens', type: 'int', default: null, optional: true, min: 16, max: 131072, help: 'Empty = backend default.' },
 ]
@@ -77,7 +81,7 @@ export function check(f: Field, v: unknown): string | null {
   if (f.type === 'string' || f.type === 'text') {
     if (typeof v !== 'string') return 'must be text'
     if (v.trim().length < f.min! || v.length > f.max!) return `must have ${f.min} to ${f.max} characters`
-    return null
+    return f.validate?.(v) ?? null
   }
   if (f.type === 'bool') return typeof v === 'boolean' ? null : 'must be true or false'
   if (typeof v !== 'number') return 'must be a number'

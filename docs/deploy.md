@@ -30,6 +30,10 @@ Code: `Dockerfile`, `docker-compose.yml`, `.github/workflows/deploy.yml`, `next.
 
 Compose already sets `SEARCH_URL`, `HARNESS_TRUST_PROXY=1` (the port is published on 127.0.0.1 only; every request comes through the tunnel) and `HARNESS_TZ` is optional.
 
+`.env.example` lists every variable. For `ai.chocorot.net` the new lines are: `AUTH_SECRET` (generate), `SSO_ISSUER=https://sso.chocorot.net`, `SSO_CLIENT_ID=ai`, `SSO_CLIENT_SECRET` (printed once by `create-client`), `SSO_REDIRECT_URI=https://ai.chocorot.net/api/auth/sso/callback`, `HARNESS_PUBLIC_URL=https://ai.chocorot.net`.
+
+Who may sign in is not an env var: it is the setting `allowed_users`, edited in the status dashboard (auth-and-modes.md).
+
 ## Order of go-live (needs Sir)
 1. The SSO is deployed and has the client `ai` (redirect URI above, roles `user`, `shell`); its secret goes into `.env`.
 2. Users get the role `user` for `ai` in the SSO (no role = "not allowed").

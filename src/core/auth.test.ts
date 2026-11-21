@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ALL_TOOLS, checkPassword, dbPath, MODES, modeForRoles, normalize, sessionWs, Throttle, uid } from './auth.ts'
+import { allowListError, ALL_TOOLS, isAllowed, parseAllowList, checkPassword, dbPath, MODES, modeForRoles, normalize, sessionWs, Throttle, uid } from './auth.ts'
 import { golden } from './test-helpers.ts'
 
 const g = golden('auth')
@@ -67,4 +67,14 @@ test('throttle: sliding window, blocked until old hits expire, idle keys are for
   assert.equal(t.blocked('ip', 3, 60, now + 10), true)
   assert.equal(t.allow('ip', 3, 60, now + 61_000), true) // the old hits left the window
   assert.equal(t.allow('other', 3, 60, now), true) // another key is independent
+})
+
+test('sign-in list: empty = everyone; addresses and @domains; case and separators do not matter; bad entries are named', () => {
+  assert.deepEqual(parseAllowList('A@x.test,\n @Corp.Test ;b@y.test'), ['a@x.test', '@corp.test', 'b@y.test'])
+  assert.deepEqual([isAllowed('z@any.test', null), isAllowed('z@any.test', ''), isAllowed('z@any.test', '  \n ')], [true, true, true])
+  const list = 'a@x.test\n@corp.test'
+  assert.deepEqual([isAllowed('A@X.test', list), isAllowed('boss@corp.test', list), isAllowed('b@x.test', list), isAllowed('a@evil-corp.test', list), isAllowed('a@sub.corp.test', list)], [true, true, false, false, false])
+  assert.equal(allowListError(list), null)
+  assert.match(allowListError('a@x.test, oops')!, /oops/)
+  assert.match(allowListError('@')!, /@/)
 })

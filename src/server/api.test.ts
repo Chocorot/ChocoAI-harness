@@ -87,6 +87,20 @@ test('without HARNESS_SHELL=unconfined the shell role is a plain user: no shell 
   assert.deepEqual([me.mode, me.capabilities.shell], ['user', false])
 })
 
+test('the sign-in list: with a list only listed users are signed in, taking someone off shuts them out on the next request, an empty list opens it again', async () => {
+  const me = async (c: Promise<string>) => (await req('GET', '/api/me', { cookie: c })).json()
+  assert.equal((await me(alice())).mode, 'user') // no list: everyone the SSO lets in
+  settings.save({ allowed_users: 'alice@example.com' })
+  assert.deepEqual([(await me(alice())).mode, (await me(bob())).mode], ['user', 'public'])
+  assert.equal((await req('GET', '/api/sessions', { cookie: bob() })).status, 401)
+  settings.save({ allowed_users: '@example.com' })
+  assert.deepEqual([(await me(alice())).mode, (await me(bob())).mode], ['user', 'user'])
+  settings.save({ allowed_users: 'carol@example.com' })
+  assert.equal((await me(alice())).mode, 'public') // removed: shut out at once, no waiting for the cookie to expire
+  settings.save({ allowed_users: null })
+  assert.equal((await me(alice())).mode, 'user')
+})
+
 test('/api/me: visitor, user, shell user, admin; a forged or expired cookie is just a visitor; a role the app does not know gets nothing', async () => {
   const me = async (o: Opts = {}) => (await req('GET', '/api/me', o)).json()
   const a = await me({ cookie: alice() })

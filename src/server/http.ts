@@ -1,8 +1,9 @@
 /** The request/response plumbing every route uses: who is calling, typed errors, JSON replies, origin check, body limits. */
 import { timingSafeEqual } from 'node:crypto'
-import { MODES, modeForRoles, type Mode } from '../core/auth.ts'
+import { isAllowed, MODES, modeForRoles, type Mode } from '../core/auth.ts'
 import * as db from '../core/db.ts'
 import * as errors from '../core/errors.ts'
+import * as settings from '../core/settings.ts'
 import { ClientGone } from './sse.ts'
 import { cookieValue, SESSION_COOKIE, unsealSession } from './session.ts'
 
@@ -34,7 +35,8 @@ export async function who(req: Request): Promise<Who> {
   if (bearerOk(req, process.env.HARNESS_TOKEN)) return { mode: 'admin', address: null }
   const s = await unsealSession(cookieValue(req.headers.get('cookie'), SESSION_COOKIE))
   const mode = s ? modeForRoles(s.roles) : null
-  return s && mode ? { mode, address: s.address } : { mode: 'public', address: null }
+  // the list is read on every request, so removing someone in the dashboard shuts them out at once, not when their cookie expires
+  return s && mode && isAllowed(s.address, settings.get('allowed_users')) ? { mode, address: s.address } : { mode: 'public', address: null }
 }
 
 export async function needUser(req: Request): Promise<string> {

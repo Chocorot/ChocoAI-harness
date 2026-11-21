@@ -13,8 +13,23 @@ delete process.env.MODEL
 
 afterEach(() => writeFileSync(process.env.HARNESS_SETTINGS!, '{}'))
 
-test('the field table equals the Python one', () => {
-  assert.deepEqual(JSON.parse(JSON.stringify(FIELDS)), g.fields)
+// allowed_users is new in the TypeScript app (the sign-in list); everything else must equal the Python table
+const NEW = 'allowed_users'
+
+test('the field table equals the Python one, plus the sign-in list', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(FIELDS.filter((f) => f.key !== NEW))), g.fields)
+  assert.ok(FIELDS.some((f) => f.key === NEW))
+})
+
+test('allowed_users: optional text; entries must be addresses or @domains; empty resets; the manifest shows it to the dashboard', () => {
+  assert.equal(get(NEW), null)
+  assert.deepEqual(save({ [NEW]: 'a@x.test\n@corp.test, B@Y.test' })[1], null)
+  assert.match(String(get(NEW)), /@corp\.test/)
+  assert.match(save({ [NEW]: 'a@x.test\nnot-an-email' })[1]!, /allowed_users has an entry that is not an email address or @domain: not-an-email/)
+  const row = manifest().find((m) => m.key === NEW)!
+  assert.deepEqual([row.type, row.optional, row.min, row.max], ['text', true, 0, 4000])
+  assert.deepEqual(save({ [NEW]: null })[1], null)
+  assert.equal(get(NEW), null)
 })
 
 test('validation of every field type gives the Python error text', () => {
@@ -31,8 +46,9 @@ test('validate: all or nothing, null resets, unknown keys refused', () => {
 })
 
 test('defaults and manifest equal the Python ones', () => {
-  assert.deepEqual(current(), g.current)
-  assert.deepEqual(JSON.parse(JSON.stringify(manifest())), g.manifest.map((m: Record<string, unknown>) => (m.key === 'base_url' ? { ...m, value: process.env.BASE_URL ?? 'http://localhost:1235/v1' } : m)))
+  const { [NEW]: _list, ...rest } = current()
+  assert.deepEqual(rest, g.current)
+  assert.deepEqual(JSON.parse(JSON.stringify(manifest().filter((m) => m.key !== NEW))), g.manifest.map((m: Record<string, unknown>) => (m.key === 'base_url' ? { ...m, value: process.env.BASE_URL ?? 'http://localhost:1235/v1' } : m)))
 })
 
 test('save writes the file atomically, keeps a .bak, applies at once, and a bad hand-edited value is ignored', () => {

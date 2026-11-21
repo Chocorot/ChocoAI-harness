@@ -1,4 +1,6 @@
 /** The SSO round trip: /api/auth/sso/start sends the browser to the SSO, /api/auth/sso/callback brings it back with a code. */
+import { isAllowed } from '../core/auth.ts'
+import * as settings from '../core/settings.ts'
 import { authorizeUrl, completeLogin, FLOW_COOKIE, FLOW_SECONDS, newFlow, openFlow, sameSecret, sealFlow, ssoConfig } from './sso.ts'
 import { cookieValue, newSession, SESSION_COOKIE, SESSION_SECONDS, sealSession } from './session.ts'
 
@@ -32,6 +34,7 @@ export async function ssoCallback(req: Request): Promise<Response> {
   if (q.get('iss') !== null && q.get('iss') !== cfg.issuer) return back('error') // RFC 9207 mix-up defence
   try {
     const user = await completeLogin(cfg, { code: q.get('code')!, flow })
+    if (!isAllowed(user.email, settings.get('allowed_users'))) return back('denied')
     // The session keeps the roles the SSO gave this app; the mode (user or shell) is derived from them on every request.
     const cookie = `${SESSION_COOKIE}=${await sealSession(newSession(user.email, user.roles))}; Path=/; Max-Age=${SESSION_SECONDS}; HttpOnly; SameSite=Lax${secure()}`
     return redirect(`${url.origin}${flow.next}`, [clearFlow, cookie])

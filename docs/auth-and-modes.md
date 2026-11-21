@@ -31,6 +31,15 @@ A new tier = a new row. Tools are limited twice: the schemas sent to the model, 
 - POSTs, PATCHes and DELETEs on `/api/*` with an `Origin` that is not our own host are refused (403), on top of SameSite.
 - **Everyone has to sign in again after the 2026-11-21 rewrite**: the old `choco_harness` cookie (signed with `HARNESS_SESSION_KEY`) is not read any more.
 
+## Who may sign in: the `allowed_users` setting (edited in the status dashboard)
+- A harness setting (text, optional), so it shows up in the status site's AI page (harness detail, settings form) with no dashboard change, like every setting (README, "Settings and the manage API").
+- One entry per line (commas and spaces also work): an email address, or `@domain` for every address of that domain. Case does not matter. A bad entry is refused when saving, with its name in the message.
+- **Empty (the default) = everyone the SSO lets in.** With a list, only listed addresses are signed in; everybody else is a visitor.
+- It is checked at the callback (an unlisted user gets `/?signin=denied`) **and on every request** (`http.ts` `who`), so taking someone off the list shuts them out on their next request, not when their 12-hour cookie expires. Their saved chats stay on disk and come back if they are added again. Admin (`/task`) is not affected.
+- It narrows, it does not widen: the SSO still refuses users with no role for `ai` before the harness ever sees them (`grant <email> ai user`). So today a new person needs the SSO role **and** to be on the list (if a list is set). To make the list the only live gate, give every SSO user the role `user` for `ai` once; an SSO "open client" option that does this was not built.
+- Careful: a list that does not include your own address locks you out of the signed-in features (the status dashboard still works to fix it).
+- Tests: `auth.test.ts` (parsing, domains), `settings.test.ts` (validation, manifest), `api.test.ts` (shut out on the next request). The callback's own `denied` branch is not covered by a test.
+
 ## Endpoints
 | | |
 |---|---|
