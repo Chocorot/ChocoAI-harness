@@ -21,7 +21,7 @@ PUBLIC_PROMPT = (
     "If asked to, say so briefly. Do not claim to remember earlier visits."
 )
 
-# type: string | text | int | float. `env`: an environment variable that supplies the default when set.
+# type: string | text | int | float | bool. `env`: an environment variable that supplies the default when set.
 # `optional`: the default is "not sent to the backend". A null value resets a field to its default.
 FIELDS = [
     {"key": "system_prompt", "label": "System prompt", "type": "text", "default": SYSTEM_PROMPT, "min": 1, "max": 8000,
@@ -54,6 +54,8 @@ FIELDS = [
      "help": "Older messages of a public chat are dropped above this size. The window is 16K tokens."},
     {"key": "public_max_tokens", "label": "Public max reply tokens", "type": "int", "default": 1024, "min": 16, "max": 32768,
      "help": "Caps the length of a public reply so one visitor can't hold the model for minutes."},
+    {"key": "vision", "label": "Photo input (vision)", "type": "bool", "default": False,
+     "help": "Let signed-in users attach a photo. Turn on only when the model on the backend can look at images (a vision model); otherwise it answers nonsense or errors."},
     {"key": "temperature", "label": "Temperature", "type": "float", "default": None, "optional": True, "min": 0, "max": 2,
      "help": "Empty = backend default."},
     {"key": "max_tokens", "label": "Max reply tokens", "type": "int", "default": None, "optional": True, "min": 16, "max": 131072,
@@ -83,6 +85,8 @@ def _check(f, v):
         if len(v.strip()) < f["min"] or len(v) > f["max"]:
             return f"must have {f['min']} to {f['max']} characters"
         return None
+    if t == "bool":
+        return None if isinstance(v, bool) else "must be true or false"
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return "must be a number"
     if t == "int" and not isinstance(v, int):

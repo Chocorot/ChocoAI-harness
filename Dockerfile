@@ -1,5 +1,7 @@
 FROM python:3.12-slim
-RUN useradd -m app && mkdir /data /workspace && chown app /data /workspace
+# poppler-utils: pdftotext, so users can attach PDFs (docs/attachments.md)
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/* \
+ && useradd -m app && mkdir /data /workspace && chown app /data /workspace
 WORKDIR /app
 COPY *.py ./
 COPY web ./web

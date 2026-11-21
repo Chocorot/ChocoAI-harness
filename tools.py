@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 
+import attach
 import errors
 import web
 
@@ -62,7 +63,9 @@ def _path(ws, p):
 
 
 def read_file(ws, path, start_line=1, end_line=200):
-    lines = _path(ws, path).read_text(errors="replace").splitlines()
+    p = _path(ws, path)
+    # .pdf and .docx are binary: read their text (an uploaded document can be paged through like any file)
+    lines = (attach.extract(p) if p.suffix.lower() in (".pdf", ".docx") else p.read_text(errors="replace")).splitlines()
     start, end = max(1, start_line), min(end_line, len(lines), start_line + 399)  # hard cap 400 lines
     body = "\n".join(f"{n}: {lines[n - 1]}" for n in range(start, end + 1))
     return f"[lines {start}-{end} of {len(lines)}]\n{body}"

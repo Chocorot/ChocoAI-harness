@@ -5,6 +5,7 @@ const root = new URL("../js/", import.meta.url).href;
 const { renderMarkdown, splitBlocks, inline, esc } = await import(root + "md.js");
 const { splitEvents, splitThink } = await import(root + "sse.js");
 const { icon, hasIcon } = await import(root + "icons.js");
+const { parseUserContent, fmtSize, extOf } = await import(root + "attach.js");
 
 test("html is always escaped", () => {
   const h = renderMarkdown("<script>alert(1)</script> **b** `<i>`");
@@ -62,4 +63,17 @@ test("inline <think> split, also with a tag cut in half", () => {
 test("icons", () => {
   assert.ok(icon("send").includes("<svg") && hasIcon("send") && !hasIcon("nope"));
   assert.ok(icon("nope").includes("<path"));
+});
+
+test("saved user messages: text, documents and photos are told apart again", () => {
+  const doc = 'summarise this\n\n<attached_file name="notes.txt" (truncated: 5 of 9 characters)>\nhello\nworld\n</attached_file>\n\n<attached_file name="b.md">\n# x\n</attached_file>';
+  assert.deepEqual(parseUserContent(doc), { text: "summarise this", files: ["notes.txt", "b.md"], images: [] });
+  const mixed = parseUserContent([{ type: "text", text: "what is this?" }, { type: "image_ref", name: "uploads/p.jpg" }]);
+  assert.deepEqual(mixed, { text: "what is this?", files: [], images: ["p.jpg"] });
+  assert.deepEqual(parseUserContent("plain"), { text: "plain", files: [], images: [] });
+  assert.deepEqual(parseUserContent(null), { text: "", files: [], images: [] });
+});
+test("sizes and extensions", () => {
+  assert.equal(fmtSize(500), "500 B"); assert.equal(fmtSize(2048), "2 KB"); assert.equal(fmtSize(1572864), "1.5 MB");
+  assert.equal(extOf("Report.PDF"), ".pdf"); assert.equal(extOf("noext"), ""); assert.equal(extOf("a.b.c.docx"), ".docx");
 });

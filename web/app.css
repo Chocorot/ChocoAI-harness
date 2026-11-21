@@ -187,13 +187,23 @@ input, textarea { font: inherit; color: inherit; }
 
 /* ---- composer ---- */
 .composer-wrap { flex: none; padding: 8px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: linear-gradient(transparent, var(--background) 30%); }
-.composer { max-width: 760px; margin: 0 auto; display: flex; align-items: flex-end; gap: 6px; padding: 6px 6px 6px 14px; border: 1px solid var(--input); border-radius: 26px; background: var(--card); box-shadow: 0 2px 12px oklch(0 0 0 / 6%); transition: border-color var(--dur-base); }
+.composer { max-width: 760px; margin: 0 auto; display: flex; align-items: flex-end; gap: 4px; padding: 6px; border: 1px solid var(--input); border-radius: 26px; background: var(--card); box-shadow: 0 2px 12px oklch(0 0 0 / 6%); transition: border-color var(--dur-base); }
 .composer:focus-within { border-color: var(--primary); }
-.composer textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font-size: 16px; /* 16px stops iOS zooming on focus */ line-height: 1.45; padding: 10px 0; max-height: 9.5rem; }
+.composer textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; font-size: 16px; /* 16px stops iOS zooming on focus */ line-height: 1.45; padding: 10px 4px 10px 8px; max-height: 9.5rem; }
 .composer textarea::placeholder { color: var(--muted-fg); }
 .send { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: var(--primary-fg); display: grid; place-items: center; transition: transform var(--dur-fast), opacity var(--dur-fast); }
 .send:active { transform: scale(0.9); }
 .send:disabled { opacity: 0.35; }
+.attach { flex: none; color: var(--muted-fg); }
+.atts { max-width: 760px; margin: 0 auto 8px; display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; -webkit-overflow-scrolling: touch; }
+.att { position: relative; flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 6px 0 6px; max-width: 230px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 0.82rem; color: inherit; text-decoration: none; }
+.att .th { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; background: var(--muted); display: grid; place-items: center; color: var(--muted-fg); }
+.att .nm { min-width: 0; display: flex; flex-direction: column; } .att .nm b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .att .nm small { color: var(--muted-fg); }
+.att .rm { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--muted-fg); }
+.att .rm:active { background: var(--muted); }
+.bubble .atts { margin: 0 0 8px; padding: 0; flex-wrap: wrap; overflow: visible; max-width: none; } .bubble .att { background: color-mix(in oklab, var(--card) 70%, transparent); }
+.bubble img.photo { display: block; max-width: min(100%, 260px); max-height: 240px; border-radius: 12px; margin-bottom: 6px; object-fit: cover; }
+.dropping .composer { border-color: var(--primary); border-style: dashed; }
 .fine { max-width: 760px; margin: 6px auto 0; text-align: center; font-size: 0.72rem; color: var(--muted-fg); }
 
 /* ---- sidebar / lists ---- */

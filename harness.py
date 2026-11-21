@@ -17,6 +17,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import attach
 import auth
 import db
 import errors
@@ -24,9 +25,11 @@ import runq
 import settings
 import tools
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
-MAX_BODY = 1_000_000  # bytes accepted on /task
+MAX_BODY = 1_000_000  # bytes accepted on a request
+DRAIN = 20_000_000  # most of a refused body we read before answering
+ATTACH_BODY = 9_000_000  # signed-in chat requests may carry attachments (base64: up to ~6 MB of files)
 BULKY = {"read_file", "web_fetch", "web_search"}  # results old enough to be re-fetched are replaced by a stub when compacting
 HELPER_PROMPT = (" You are a helper working on one subtask for another agent. Do only that task, then finish with a short "
                  "summary (under 150 words) of what you found or did.")
@@ -145,11 +148,13 @@ def chat(messages, emit=cli_emit, schemas=None, max_tokens=None):
         raise errors.from_upstream(e) from e
 
 
-def call_model(messages, emit, chat_fn, sleep=time.sleep):
+def call_model(messages, emit, chat_fn, sleep=time.sleep, prep=None):
     """One model call with recovery. Transient failures are retried (settings `retries`, backoff in errors.BACKOFF);
     a context overflow is retried once with the history shrunk harder. Returns (message, usage, what_was_sent).
-    Raises HarnessError. `retrying.reset` tells the page to discard a half-streamed reply before the retry."""
+    Raises HarnessError. `retrying.reset` tells the page to discard a half-streamed reply before the retry.
+    `prep` turns the compacted messages into what the backend gets (photos become data URLs); `sent` stays the small form."""
     sent, shrunk, attempt = compact(messages), False, 0
+    prep = prep or (lambda m: m)
     while True:
         streamed = []
 
@@ -159,7 +164,7 @@ def call_model(messages, emit, chat_fn, sleep=time.sleep):
             emit(ev)
 
         try:
-            msg, usage = chat_fn(sent, spy)
+            msg, usage = chat_fn(prep(sent), spy)
             return msg, usage, sent
         except Exception as e:
             err = errors.classify(e)  # chat() already turned backend failures into HarnessError
@@ -313,7 +318,7 @@ def agent_loop(run, messages, max_turns):
         if spent > settings.get("max_run_tokens"):
             return stop(f"max_run_tokens={settings.get('max_run_tokens')} reached", "Stopped: the token limit for one run was reached. Say 'continue' to go on.")
         run.emit({"t": "status", "phase": "model", "turn": turn + 1, "max": max_turns})
-        msg, usage, sent = call_model(messages, run.emit, run.chat_fn)
+        msg, usage, sent = call_model(messages, run.emit, run.chat_fn, prep=lambda m: attach.expand(m, run.ws))
         spent += (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0) or est_tokens(sent)
         run.store.usage(turn, usage, est_tokens(sent))
         messages.append(msg)
@@ -374,7 +379,7 @@ def system_text(allow=None):
     return " ".join(x for x in (settings.get("system_prompt"), tools.prompts_for(allow) if allow is not None else "") if x)
 
 
-def start(conn, goal, session, retry=False, allow=None):
+def start(conn, goal, session, retry=False, allow=None, content=None):
     """Create or resume a session, add the goal as a user message. Returns (sid, messages).
     `retry` removes the failure note of the last run so the model simply continues where it stopped."""
     if session:
@@ -393,7 +398,7 @@ def start(conn, goal, session, retry=False, allow=None):
         messages = [{"role": "system", "content": system_text(allow)}]
         db.save_msg(conn, sid, messages[0])
     if goal:
-        messages.append({"role": "user", "content": goal})
+        messages.append({"role": "user", "content": content if content is not None else goal})
         db.save_msg(conn, sid, messages[-1])
     return sid, messages
 
@@ -539,12 +544,15 @@ def make_server(host, port, ws, max_turns):
             if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host"):
                 raise errors.HarnessError("forbidden")
 
-        def _json_body(self):
+        def _json_body(self, limit=MAX_BODY):
             try:
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 n = -1
-            if not 0 < n <= MAX_BODY:
+            if not 0 < n <= limit:
+                left = min(max(n, 0), DRAIN)  # read the body we refuse (bounded), or the client sees a reset, not our answer
+                while left > 0 and (chunk := self.rfile.read(min(65536, left))):
+                    left -= len(chunk)
                 raise errors.HarnessError("bad_request", "Request body is missing or too large.")
             try:
                 req = json.loads(self.rfile.read(n))
@@ -617,6 +625,9 @@ def make_server(host, port, ws, max_turns):
             m = re.fullmatch(r"/api/sessions/(\d+)", path)
             if m:
                 return self._session_get(int(m.group(1)))
+            m = re.fullmatch(r"/api/sessions/(\d+)/uploads/(\w[\w.\-]{0,99})", path)
+            if m:
+                return self._upload_get(int(m.group(1)), m.group(2))
             raise errors.HarnessError("not_found")
 
         def _post(self, rid):
@@ -650,7 +661,9 @@ def make_server(host, port, ws, max_turns):
             rule = auth.MODES[mode]
             self._send(200, {"mode": mode, "address": addr, "capabilities": {
                 "login": auth.enabled(), "tools": rule["tools"], "shell": "run_bash" in rule["tools"],
-                "history": rule["store"]}})
+                "history": rule["store"],
+                "attachments": {"image": rule["store"] == "user" and settings.get("vision"),
+                                "documents": sorted(attach.READERS) if rule["store"] == "user" else []}}})
 
         def _login(self):
             if not auth.enabled():
@@ -682,11 +695,28 @@ def make_server(host, port, ws, max_turns):
             def load(conn):
                 if not db.session_exists(conn, sid):
                     raise errors.HarnessError("not_found")
-                return [{**m, "note": True} if (m.get("content") or "").startswith(errors.NOTE_PREFIX) else m
+                return [{**m, "note": True} if isinstance(m.get("content"), str) and m["content"].startswith(errors.NOTE_PREFIX) else m
                         for m in db.load(conn, sid) if m["role"] != "system"]
 
             addr = self._need_user()
             self._send(200, {"id": sid, "running": (addr, sid) in active, "messages": self._with_user_db(load)})
+
+        def _upload_get(self, sid, name):
+            """A file the owner attached to one of their own chats (photo thumbnails in the page, document downloads)."""
+            addr = self._need_user()
+
+            def check(conn):
+                if not db.session_exists(conn, sid):
+                    raise errors.HarnessError("not_found")
+
+            self._with_user_db(check)
+            f = auth.session_ws(ws, addr, sid, create=False) / "uploads" / name
+            if not f.is_file():
+                raise errors.HarnessError("not_found")
+            kind = attach.IMAGE_MIME.get(f.suffix.lstrip(".").lower())
+            self._send(200, f.read_bytes(), kind or "application/octet-stream", headers=[
+                ("Content-Security-Policy", "default-src 'none'; sandbox"), ("Cache-Control", "private, max-age=3600"),
+                *([] if kind else [("Content-Disposition", f'attachment; filename="{name}"')])])
 
         # ---- running the model ----------------------------------------------------------------------------------
         def _begin(self, stream):
@@ -721,7 +751,7 @@ def make_server(host, port, ws, max_turns):
 
         def _chat(self):
             mode, addr = self._who()
-            req = self._json_body()
+            req = self._json_body(ATTACH_BODY if addr else MAX_BODY)
             if mode == "public":
                 return self._chat_public(req)
             self._run(req, mode, addr, req.get("stream", True) is not False)
@@ -730,12 +760,18 @@ def make_server(host, port, ws, max_turns):
             """A session run for a caller with storage: admin (the original DB) or a signed-in user (their own DB)."""
             rule = auth.MODES[mode]
             goal, session, retry = req.get("goal"), req.get("session"), bool(req.get("retry"))
+            atts = req.get("attachments")
+            if atts and not addr:
+                raise errors.HarnessError("bad_request", "Attachments need a signed-in account.")
+            if atts and not goal:
+                goal = "Please look at the attached file."
             if not goal and not session:
                 raise errors.HarnessError("bad_request", "goal or session required")
             if session is not None and (isinstance(session, bool) or not isinstance(session, int)):
                 raise errors.HarnessError("bad_request", "session must be a number")
             if goal is not None and (not isinstance(goal, str) or len(goal) > MAX_BODY):
                 raise errors.HarnessError("bad_request", "goal must be text")
+            doc_text, images, saves = attach.process(atts, settings.get("vision"))  # validated before anything is created
             path = auth.db_path(addr) if addr else None  # None = the original (admin) DB
             if session:  # answer 404 as plain HTTP, before an event stream is opened
                 conn = db.connect(path)
@@ -749,10 +785,11 @@ def make_server(host, port, ws, max_turns):
                 with queue.slot(prio=rule["prio"], on_wait=self._on_wait(emit), tick=KEEPALIVE):
                     conn = db.connect(path)
                     try:
-                        sid, messages = start(conn, goal, session, retry, rule["tools"])
+                        sid, messages = start(conn, goal, session, retry, rule["tools"], attach.content(goal or "", doc_text, images))
                         self.sid = sid
                         emit({"t": "session", "id": sid})
                         run_ws = auth.session_ws(ws, addr, sid) if addr else ws
+                        attach.save(run_ws, images + saves)
                         active.add((addr, sid))
                         try:
                             reply = run_agent(conn, sid, messages, run_ws, True, max_turns, emit=emit, allow=rule["tools"])

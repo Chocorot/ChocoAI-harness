@@ -4,16 +4,18 @@ import { icon } from "./icons.js";
 import { esc } from "./md.js";
 import { readEvents } from "./sse.js";
 import { Turn, el } from "./turn.js";
+import { MAX_DOC_BYTES, MAX_FILES, MAX_TOTAL_B64, extOf, fmtSize, parseUserContent, shrinkImage, toBase64 } from "./attach.js";
 import { enter, shake, sheetIn, sheetOut, stagger } from "./anim.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const app = $("#app"), col = $("#col"), msgs = $("#msgs"), input = $("#input"), sendBtn = $("#send"), jump = $("#jump");
-const S = { me: null, sessions: [], sid: null, busy: false, polling: false, ctl: null, turn: null, poll: null, history: [], stick: true, install: null };
+const S = { me: null, sessions: [], sid: null, busy: false, polling: false, ctl: null, turn: null, poll: null, history: [], stick: true, install: null, atts: [] };
 const HKEY = "choco.public.chat.v1", TKEY = "choco-harness-theme";
 const coarse = () => matchMedia("(pointer: coarse)").matches;
 const desktop = () => matchMedia("(min-width: 768px)").matches;
 const user = () => S.me?.capabilities.history === "user";
 const can = (tool) => S.me?.capabilities.tools.includes(tool);
+const attCaps = () => S.me?.capabilities.attachments || { image: false, documents: [] };
 
 // ---- storage (every access guarded: private windows and blocked storage must not break the app) ----------------------
 const store = {
@@ -84,10 +86,23 @@ function showEmpty() {
   stagger([...e.children], { y: 10 });
 }
 const dropEmpty = () => $("#empty", col)?.remove();
-function addUser(text) {
+// atts: [{kind: "image"|"file", name, url?, size?}] shown above the text (live: object URL of the shrunk photo; saved chats: the upload URL)
+function addUser(text, atts = []) {
   dropEmpty();
-  const m = el("div", "msg user"); const b = el("div", "bubble"); b.textContent = text; m.append(b); col.append(m); enter(m, { y: 8 });
+  const m = el("div", "msg user"); const b = el("div", "bubble");
+  for (const a of atts.filter((x) => x.kind === "image")) { const img = el("img", "photo"); img.src = a.url; img.alt = a.name; b.append(img); }
+  const files = atts.filter((x) => x.kind === "file");
+  if (files.length) { const box = el("div", "atts"); files.forEach((f) => box.append(attChip(f))); b.append(box); }
+  if (text) b.append(document.createTextNode(text));
+  m.append(b); col.append(m); enter(m, { y: 8 });
   scrollBottom(true);
+}
+function attChip(a, removable) {
+  const c = el(a.url && !removable ? "a" : "div", "att");
+  if (c.tagName === "A") { c.href = a.url; c.setAttribute("download", a.name); }
+  c.innerHTML = `${a.kind === "image" && a.url ? `<img class="th" src="${esc(a.url)}" alt="">` : `<span class="th">${icon(a.kind === "image" ? "image" : "file", 20)}</span>`}<span class="nm"><b>${esc(a.name)}</b>${a.size ? `<small>${esc(fmtSize(a.size))}</small>` : ""}</span>`;
+  if (removable) { const r = el("button", "rm", icon("x", 16)); r.type = "button"; r.setAttribute("aria-label", `Remove ${a.name}`); r.addEventListener("click", removable); c.append(r); }
+  return c;
 }
 function newTurn(live = true) {
   dropEmpty();
@@ -114,13 +129,13 @@ function setBusy(b) {
 }
 function grow() {
   input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 152) + "px";
-  if (!S.busy) sendBtn.disabled = !input.value.trim();
+  if (!S.busy) sendBtn.disabled = !input.value.trim() && !S.atts.length;
 }
-async function send(text) {
+async function send(text, atts = []) {
   if (S.busy) return;
   if (!user()) { S.history.push({ role: "user", content: text }); saveHistory(); }
-  addUser(text);
-  await run(text, false);
+  addUser(text, atts.map(({ kind, name, url, size }) => ({ kind, name, url, size })));
+  await run(text, false, atts);
 }
 function retry(turn) {
   if (!user()) turn.row.remove(); // a visitor's failed attempt is redone from the history; a saved chat keeps what already happened
@@ -133,14 +148,14 @@ async function regenerate() {
   col.lastElementChild?.remove();
   await run(null, true);
 }
-async function run(text, isRetry) {
+async function run(text, isRetry, atts = []) {
   setBusy(true);
   const turn = newTurn();
   const ctl = (S.ctl = new AbortController());
   let finished = false, failure = null, lost = false;
   try {
     let body;
-    if (user()) body = isRetry ? { session: S.sid, retry: true } : { goal: text, session: S.sid || undefined };
+    if (user()) body = isRetry ? { session: S.sid, retry: true } : { goal: text, session: S.sid || undefined, attachments: atts.length ? atts.map(({ name, data }) => ({ name, data })) : undefined };
     else { // a failed attempt is retried without its failure note; the page's history is the whole conversation
       while (S.history.length && S.history[S.history.length - 1].hidden) S.history.pop();
       body = { messages: S.history.map(({ role, content }) => ({ role, content })) };
@@ -209,6 +224,40 @@ function startPoll(sid) {
 }
 function stopPoll() { clearInterval(S.poll); S.poll = null; S.polling = false; setBusy(false); }
 
+// ---- attachments (signed in) -----------------------------------------------------------------------------------------
+function renderAtts() {
+  const box = $("#atts");
+  box.hidden = !S.atts.length; box.innerHTML = "";
+  S.atts.forEach((a, i) => box.append(attChip(a, () => { S.atts.splice(i, 1); renderAtts(); grow(); })));
+  grow();
+}
+async function addFiles(files) {
+  const caps = attCaps();
+  for (const f of files) {
+    if (S.atts.length >= MAX_FILES) { toast(`At most ${MAX_FILES} attachments.`); break; }
+    try {
+      if (f.type.startsWith("image/")) {
+        if (!caps.image) { toast("This assistant can't look at photos yet."); continue; }
+        if (S.atts.some((a) => a.kind === "image")) { toast("One photo per message."); continue; }
+        const blob = await shrinkImage(f);
+        S.atts.push({ kind: "image", name: f.name.replace(/\.[^.]*$/, "") + ".jpg", data: await toBase64(blob), url: URL.createObjectURL(blob), size: blob.size });
+      } else {
+        if (!caps.documents.includes(extOf(f.name))) { toast(`Can't read ${extOf(f.name) || "that kind of"} files.`); continue; }
+        if (f.size > MAX_DOC_BYTES) { toast(`${f.name} is too large (limit ${fmtSize(MAX_DOC_BYTES)}).`); continue; }
+        S.atts.push({ kind: "file", name: f.name, data: await toBase64(f), size: f.size });
+      }
+    } catch { toast(`Could not read ${f.name}.`); }
+  }
+  renderAtts();
+}
+const attSize = () => S.atts.reduce((n, a) => n + a.data.length, 0);
+function setupAttach() {
+  const c = attCaps(), on = c.image || c.documents.length;
+  $("#attach").hidden = !on;
+  $("#file").accept = [c.image ? "image/*" : "", ...c.documents].filter(Boolean).join(",");
+  if (!on) { S.atts = []; renderAtts(); }
+}
+
 // ---- saved chats -----------------------------------------------------------------------------------------------------
 const planSteps = (raw) => (Array.isArray(raw) ? raw : []).map((x) => (typeof x === "string" ? { text: x, status: "todo" } : { text: String(x?.text || ""), status: ["todo", "doing", "done"].includes(x?.status) ? x.status : "todo" })).filter((s) => s.text.trim()).slice(0, 20);
 const NOTE = /^\[run failed: [^\]]*\]\s*/;
@@ -216,7 +265,11 @@ function replay(list) {
   let turn = null;
   const cur = () => turn || (turn = newTurn(false));
   for (const m of list) {
-    if (m.role === "user") { turn?.end(); turn = null; addUser(m.content); }
+    if (m.role === "user") {
+      turn?.end(); turn = null;
+      const u = parseUserContent(m.content), base = `/api/sessions/${S.sid}/uploads/`;
+      addUser(u.text, [...u.images.map((n) => ({ kind: "image", name: n, url: base + encodeURIComponent(n) })), ...u.files.map((n) => ({ kind: "file", name: n, url: base + encodeURIComponent(n) }))]);
+    }
     else if (m.role === "assistant") {
       if (m.note) { cur().notice({ kind: "info", msg: "A previous reply failed: " + String(m.content).replace(NOTE, "") }); continue; }
       const t = cur();
@@ -389,6 +442,7 @@ async function refreshMe() {
 function applyMode() {
   const u = user();
   app.dataset.store = u ? "user" : "client";
+  setupAttach();
   $("#btn-chats").hidden = !u; $("#btn-new").hidden = !u;
   $("#btn-account").innerHTML = S.me.address ? `<span class="avatar" style="width:30px;height:30px;font-size:.85rem">${esc(S.me.address[0])}</span>` : icon("user", 22);
   $("#fine").textContent = u ? "Saved to your account. The assistant can make mistakes." : "Your chat stays on this device. The assistant can make mistakes.";
@@ -417,6 +471,14 @@ function initViewport() {
 function wire() {
   $("#btn-chats").innerHTML = icon("menu", 22); $("#btn-new").innerHTML = icon("plus", 22);
   jump.innerHTML = `${icon("arrowdown", 16)} Latest`;
+  $("#attach").innerHTML = icon("paperclip", 22);
+  $("#attach").addEventListener("click", () => $("#file").click());
+  $("#file").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+  input.addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length && !$("#attach").hidden) { e.preventDefault(); addFiles(fs); } });
+  const wrap = $("#composer-wrap");
+  ["dragenter", "dragover"].forEach((t) => wrap.addEventListener(t, (e) => { if (!$("#attach").hidden && e.dataTransfer?.types.includes("Files")) { e.preventDefault(); wrap.classList.add("dropping"); } }));
+  ["dragleave", "drop"].forEach((t) => wrap.addEventListener(t, () => wrap.classList.remove("dropping")));
+  wrap.addEventListener("drop", (e) => { if (!$("#attach").hidden && e.dataTransfer?.files.length) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } });
   $("#btn-chats").addEventListener("click", chatsSheet); $("#btn-new").addEventListener("click", goNew);
   $("#btn-account").addEventListener("click", accountSheet);
   jump.addEventListener("click", () => { S.stick = true; msgs.scrollTo({ top: msgs.scrollHeight, behavior: "smooth" }); });
@@ -430,8 +492,11 @@ function wire() {
   $("#composer").addEventListener("submit", (e) => {
     e.preventDefault();
     if (S.busy) return stop();
-    const text = input.value.trim(); if (!text) return;
-    input.value = ""; grow(); send(text);
+    const text = input.value.trim();
+    if (!text && !S.atts.length) return;
+    if (attSize() > MAX_TOTAL_B64) return toast("That is too much to send at once. Remove a file.");
+    const atts = S.atts; S.atts = []; renderAtts();
+    input.value = ""; grow(); send(text, atts);
   });
   addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); S.install = e; });
   addEventListener("hashchange", () => route());

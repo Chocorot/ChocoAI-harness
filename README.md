@@ -7,6 +7,7 @@ Python 3.11+ standard library only (the web UI is plain files plus one vendored 
 |---|---|
 | `harness.py` | CLI, agent loop, streaming, context compaction, optional HTTP mode |
 | `tools.py` | The tool table (`read_file`, `edit_file`, `write_file`, `run_bash`, `web_fetch`, `web_search`, `update_plan`, `delegate`): schemas, prompt hints, handlers |
+| `attach.py` | Photos (vision) and documents (txt, docx, pdf) attached to a message ([docs/attachments.md](docs/attachments.md)) |
 | `web.py` | Internet for the model: page fetch with an SSRF guard, SearxNG search ([docs/internet.md](docs/internet.md)) |
 | `auth.py` | Sign-in with the DMS mailbox (IMAP), signed cookie, the modes table, throttles, per-user storage paths ([docs/auth-and-modes.md](docs/auth-and-modes.md), [docs/storage-isolation.md](docs/storage-isolation.md)) |
 | `errors.py` | The table of failure kinds: what the user sees, what the model is told, what is retried ([docs/errors.md](docs/errors.md)) |
