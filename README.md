@@ -13,7 +13,7 @@ Python 3.11+ standard library only (the web UI is plain files plus one vendored 
 | `auth.py` | Sign-in with the DMS mailbox (IMAP), signed cookie, the modes table, throttles, per-user storage paths ([docs/auth-and-modes.md](docs/auth-and-modes.md), [docs/storage-isolation.md](docs/storage-isolation.md)) |
 | `errors.py` | The table of failure kinds: what the user sees, what the model is told, what is retried ([docs/errors.md](docs/errors.md)) |
 | `runq.py` | Bounded run queue: one run at a time, the rest wait in line ([docs/chat-streaming.md](docs/chat-streaming.md)) |
-| `web/` | The app UI served at `/`: HTML, CSS and ES modules, no build step, installable PWA ([docs/pwa-and-ui-design.md](docs/pwa-and-ui-design.md)). Tests: `node --test web/test` |
+| `web/` | The app UI served at `/`: HTML, CSS and ES modules, no build step, installable PWA ([docs/pwa-and-ui-design.md](docs/pwa-and-ui-design.md)). Tests: `node --test web/test/*.test.mjs` |
 | `settings.py` | The settings table (system prompt, model, max turns, compaction, temperature, max tokens): validation, JSON file next to the DB, manifest |
 | `db.py` | SQLite (`harness.db`): sessions, messages, token usage, tool audit log |
 | `test_harness.py` | Offline tests: `python3 -m unittest test_harness` |

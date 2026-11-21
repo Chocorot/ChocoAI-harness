@@ -1,6 +1,6 @@
 # The app UI (PWA) and its design rules
 
-Code: `web/` (served by `harness.static_file`). Tests: `node --test web/test` (markdown, SSE parsing, `<think>` splitting, icons), `StaticTests` in `test_harness.py` (what is served, content types, CSP, traversal, offline file list).
+Code: `web/` (served by `harness.static_file`). Tests: `node --test web/test/*.test.mjs` (markdown, SSE parsing, `<think>` splitting, icons), `StaticTests` in `test_harness.py` (what is served, content types, CSP, traversal, offline file list).
 No build step, no framework, no dependency except the vendored `web/vendor/motion.js` (see `web/vendor/README.md`).
 
 ## Files

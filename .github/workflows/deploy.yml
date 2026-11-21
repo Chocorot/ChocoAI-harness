@@ -17,7 +17,7 @@ jobs:
         run: python3 -m unittest test_harness
 
       - name: Test (web UI logic)
-        run: node --test web/test
+        run: node --test web/test/*.test.mjs
 
       - uses: docker/setup-buildx-action@v3
 

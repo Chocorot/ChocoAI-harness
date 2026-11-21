@@ -1,7 +1,7 @@
 # Attachments: photos and documents
 
 Code: `attach.py` (limits, readers, `process`, `expand`), `harness.py` (`_run`, `_upload_get`), `tools.py` (`read_file`), `web/js/attach.js` + `web/js/app.js` (page).
-Tests: `AttachUnitTests`, `AttachmentApiTests`, `BoolSettingTests` in `test_harness.py`; `node --test web/test`.
+Tests: `AttachUnitTests`, `AttachmentApiTests`, `BoolSettingTests` in `test_harness.py`; `node --test web/test/*.test.mjs`.
 Signed-in users only. Visitors have no attachments (the public chat stays text-only); the admin `/task` endpoint refuses them too.
 
 ## What a user can do
