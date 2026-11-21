@@ -4,6 +4,7 @@ Read the doc for the area you are about to change. Update it in the same change.
 
 | Doc | Area |
 |---|---|
+| [ts-rewrite-plan.md](ts-rewrite-plan.md) | PROPOSAL (not built): rewrite in TypeScript/Next.js with the Choco SSO and shared design; compatibility contract, phases, risks, open decisions |
 | [auth-and-modes.md](auth-and-modes.md) | Sign-in with the mail account, cookie, public / user / shell / admin modes, endpoints, env vars |
 | [storage-isolation.md](storage-isolation.md) | One DB per user, one directory per session, what is and is not isolated |
 | [internet.md](internet.md) | web_fetch / web_search, SSRF guard, SearxNG deploy |
