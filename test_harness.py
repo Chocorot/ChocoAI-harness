@@ -1,7 +1,10 @@
+import http.client
+import io
 import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -9,7 +12,9 @@ from pathlib import Path
 from unittest import mock
 
 import db
+import errors
 import harness
+import runq
 import settings
 import tools
 
@@ -51,6 +56,9 @@ class ToolTests(unittest.TestCase):
     def test_bad_args(self):
         self.assertIn("error", tools.run("read_file", {"nope": 1}, self.ws))
         self.assertIn("unknown tool", tools.run("rm", {}, self.ws))
+        self.assertTrue(tools.run("rm", {}, self.ws).startswith("error[unknown_tool]:"))  # every failure has this shape
+        self.assertTrue(tools.run("read_file", {"nope": 1}, self.ws).startswith("error[bad_args]:"))
+        self.assertTrue(tools.run("read_file", {"path": "missing"}, self.ws).startswith("error[not_found]:"))
 
 
 def convo(n, size=6000):
@@ -156,7 +164,7 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(cm.exception.code, 401)
                 body = urllib.request.urlopen(post("tok")).read().decode()
                 evs = [json.loads(x[5:]) for x in body.split("\n\n") if x.startswith("data:")]
-                self.assertEqual([e["t"] for e in evs], ["session", "think", "text", "done"])
+                self.assertEqual([e["t"] for e in evs], ["session", "status", "think", "text", "done"])
             finally:
                 harness.chat = real
                 srv.shutdown()
@@ -336,6 +344,307 @@ class ManageApiTests(SettingsBase):
         self.assertEqual((s["id"], len(s["goal"]), s["turns"], s["tokens"], s["toolCalls"]), (sid, 200, 2, 120, 1))
         self.assertEqual(self.call(base, "/manage/sessions?limit=abc")[0], 400)
         self.assertEqual(self.call(base, "/manage/manifest")[1]["stats"]["promptTokens"], 100)
+
+
+def http_err(code, body):
+    return urllib.error.HTTPError("http://x/v1", code, "m", {}, io.BytesIO(body.encode()))
+
+
+def boom(kind="upstream_down"):
+    def chat_fn(messages, emit):
+        raise errors.HarnessError(kind)
+    return chat_fn
+
+
+class ErrorTests(unittest.TestCase):
+    def test_classification_table(self):
+        overflow = '{"error":{"message":"The number of tokens to keep from the initial prompt is greater than the context length"}}'
+        cases = [
+            (http_err(502, "bad gateway"), "upstream_5xx", "http_502"),
+            (http_err(429, "slow down"), "upstream_5xx", "http_429"),
+            (http_err(401, "no"), "upstream_auth", "http_401"),
+            (http_err(400, overflow), "context_overflow", "http_400"),
+            (http_err(500, "n_ctx exceeded"), "context_overflow", "http_500"),
+            (http_err(400, "bad param"), "upstream_4xx", "http_400"),
+            (urllib.error.URLError(ConnectionRefusedError()), "upstream_down", "refused"),
+            (urllib.error.URLError(TimeoutError("t")), "upstream_timeout", "timeout"),
+            (TimeoutError(), "upstream_timeout", "timeout"),
+            (ValueError("garbled"), "upstream_bad_stream", "bad_json"),
+            (http.client.IncompleteRead(b""), "upstream_down", "incompleteread"),
+        ]
+        for exc, kind, code in cases:
+            e = errors.from_upstream(exc)
+            self.assertEqual((e.kind, e.code), (kind, code), repr(exc))
+            if isinstance(exc, urllib.error.HTTPError):
+                exc.close()
+
+    def test_backend_reason_is_kept_and_unknown_is_internal(self):
+        e = errors.from_upstream(http_err(400, '{"error":{"message":"tokens to keep too big"}}'))
+        self.assertIn("tokens to keep", e.detail)  # the HTTP body is no longer thrown away
+        e = errors.classify(KeyError("x"))
+        self.assertEqual((e.kind, e.code, e.status), ("internal", "KeyError", 500))
+
+    def test_event_note_and_body(self):
+        e = errors.HarnessError("upstream_down", code="refused", detail="x" * 1000)
+        ev, body = e.event("ab12"), e.body("ab12")
+        self.assertEqual((ev["t"], ev["kind"], ev["retryable"], ev["rid"], len(ev["detail"])), ("error", "upstream_down", True, "ab12", 300))
+        self.assertEqual(ev["d"], ev["msg"])  # older pages read `d`
+        self.assertEqual((body["error"], body["kind"]), (e.message, "upstream_down"))
+        self.assertTrue(ev["note"].startswith(errors.NOTE_PREFIX + "upstream_down/refused]"))
+
+
+class CallModelTests(SettingsBase):
+    def flaky(self, fails, kind="upstream_5xx", stream_first=False):
+        calls = []
+
+        def chat_fn(messages, emit):
+            calls.append(messages)
+            if len(calls) <= fails:
+                if stream_first:
+                    emit({"t": "text", "d": "par"})
+                raise errors.HarnessError(kind)
+            return {"role": "assistant", "content": "ok"}, {"prompt_tokens": 1}
+        chat_fn.calls = calls
+        return chat_fn
+
+    def test_transient_failures_retry_with_backoff(self):
+        fn, evs, waits = self.flaky(2, stream_first=True), [], []
+        msg, usage, _ = harness.call_model(convo(1, 5), evs.append, fn, sleep=waits.append)
+        self.assertEqual((msg["content"], len(fn.calls), waits), ("ok", 3, [2, 6]))
+        retry = [e for e in evs if e["t"] == "retrying"]
+        self.assertEqual([(e["attempt"], e["in"], e["reset"]) for e in retry], [(1, 2, True), (2, 6, True)])  # page must drop "par"
+
+    def test_gives_up_after_retries_setting(self):
+        settings.save({"retries": 1})
+        fn, waits = self.flaky(99), []
+        with self.assertRaises(errors.HarnessError) as cm:
+            harness.call_model(convo(1, 5), lambda e: None, fn, sleep=waits.append)
+        self.assertEqual((cm.exception.kind, len(fn.calls), waits), ("upstream_5xx", 2, [2]))
+
+    def test_non_transient_is_not_retried(self):
+        for kind in ("upstream_4xx", "upstream_timeout", "upstream_auth"):
+            fn, waits = self.flaky(99, kind), []
+            with self.assertRaises(errors.HarnessError):
+                harness.call_model(convo(1, 5), lambda e: None, fn, sleep=waits.append)
+            self.assertEqual((len(fn.calls), waits), (1, []), kind)
+
+    def test_context_overflow_shrinks_once_then_succeeds(self):
+        settings.save({"compact_at": 200000})  # nothing is shrunk on the first try
+        fn, evs = self.flaky(1, "context_overflow"), []
+        msg, _, sent = harness.call_model(convo(10), evs.append, fn)
+        self.assertEqual(msg["content"], "ok")
+        self.assertLess(harness.est_tokens(fn.calls[1]), harness.est_tokens(fn.calls[0]))
+        self.assertEqual([e["t"] for e in evs], ["retrying"])
+
+    def test_context_overflow_that_cannot_shrink_is_reported(self):
+        fn = self.flaky(99, "context_overflow")
+        with self.assertRaises(errors.HarnessError) as cm:
+            harness.call_model(convo(1, 5), lambda e: None, fn)  # nothing old enough to shrink
+        self.assertEqual((cm.exception.kind, len(fn.calls)), ("context_overflow", 1))
+
+
+class FailureMemoryTests(SettingsBase):
+    def setUp(self):
+        super().setUp()
+        settings.save({"retries": 0})
+        self.conn = db.connect()
+        self.ws = Path(self.t.name)
+
+    def test_failed_run_leaves_a_note_the_model_sees_and_retry_removes_it(self):
+        sid, msgs = harness.start(self.conn, "do it", None)
+        with self.assertRaises(errors.HarnessError):
+            harness.run_agent(self.conn, sid, msgs, self.ws, True, chat_fn=boom("upstream_timeout"), emit=lambda e: None)
+        saved = db.load(self.conn, sid)
+        self.assertEqual((saved[-1]["role"], saved[-1] == msgs[-1]), ("assistant", True))
+        self.assertTrue(saved[-1]["content"].startswith(errors.NOTE_PREFIX + "upstream_timeout/upstream_timeout]"))
+        _, more = harness.start(self.conn, "try shorter", sid)  # a new message: the note stays so the model knows
+        self.assertEqual([m["role"] for m in more[-3:]], ["user", "assistant", "user"])
+        _, again = harness.start(self.conn, None, sid, retry=True)  # plain retry: note removed
+        self.assertEqual(again[-1]["content"], "try shorter")
+        sid2, msgs2 = harness.start(self.conn, "x", None)
+        with self.assertRaises(errors.HarnessError):
+            harness.run_agent(self.conn, sid2, msgs2, self.ws, True, chat_fn=boom(), emit=lambda e: None)
+        _, again = harness.start(self.conn, None, sid2, retry=True)
+        self.assertEqual([m["role"] for m in again], ["system", "user"])
+        self.assertEqual(len(db.load(self.conn, sid2)), 2)
+
+    def test_orphan_tool_calls_are_repaired_on_resume(self):
+        sid = db.new_session(self.conn, "g")
+        calls = [{"id": f"c{i}", "type": "function", "function": {"name": "run_bash", "arguments": "{}"}} for i in range(2)]
+        for m in ({"role": "system", "content": "s"}, {"role": "user", "content": "g"},
+                  {"role": "assistant", "content": None, "tool_calls": calls},
+                  {"role": "tool", "tool_call_id": "c0", "content": "done"}):  # crashed before c1's result
+            db.save_msg(self.conn, sid, m)
+        _, msgs = harness.start(self.conn, "go on", sid)
+        self.assertEqual([m["role"] for m in msgs[-3:]], ["tool", "tool", "user"])
+        self.assertIn("error[interrupted]", msgs[-2]["content"])
+        self.assertEqual(db.load(self.conn, sid)[1:], msgs[1:])  # the repaired history is what the DB holds (msgs[0] is the live prompt)
+        before = len(msgs)
+        harness.repair_tail(self.conn, sid, msgs)
+        self.assertEqual(len(msgs), before)  # idempotent
+
+    def test_unknown_session_is_a_typed_error_not_sys_exit(self):
+        with self.assertRaises(errors.HarnessError) as cm:
+            harness.start(self.conn, "x", 999)
+        self.assertEqual(cm.exception.kind, "not_found")
+
+    def test_error_ring_keeps_newest(self):
+        for i in range(db.ERROR_KEEP + 5):
+            db.log_error(self.conn, f"r{i}", None, errors.HarnessError("internal"))
+        rows = db.list_errors(self.conn, 1000)
+        self.assertEqual((len(rows), rows[0]["rid"]), (db.ERROR_KEEP, f"r{db.ERROR_KEEP + 4}"))
+
+
+class RunQueueTests(unittest.TestCase):
+    def test_priority_then_arrival_and_busy(self):
+        q, order, gate = runq.RunQueue(lambda: 2), [], threading.Event()
+
+        def job(name, prio):
+            with q.slot(prio, tick=0.05):
+                order.append(name)
+                gate.wait()
+
+        first = threading.Thread(target=job, args=("a", 1))
+        first.start()
+        while not q.busy():
+            time.sleep(0.005)
+        waiters = []
+        for name, prio in (("low", 2), ("hi", 0)):
+            th = threading.Thread(target=job, args=(name, prio))
+            th.start()
+            waiters.append(th)
+            time.sleep(0.1)
+        with self.assertRaises(errors.HarnessError) as cm:  # 2 already waiting, limit is 2
+            with q.slot(1):
+                pass
+        self.assertEqual(cm.exception.kind, "busy")
+        gate.set()
+        for th in [first, *waiters]:
+            th.join(2)
+        self.assertEqual(order, ["a", "hi", "low"])  # the priority 0 waiter jumped the line
+        with q.slot():  # idle again: never refuses, even with limit 0
+            pass
+        self.assertFalse(q.busy())
+
+    def test_on_wait_can_leave_the_line(self):
+        q, gate = runq.RunQueue(), threading.Event()
+
+        def holder():
+            with q.slot():
+                gate.wait()
+
+        th = threading.Thread(target=holder)
+        th.start()
+        while not q.busy():
+            time.sleep(0.005)
+
+        def leave(ahead):
+            raise harness.ClientGone
+
+        with self.assertRaises(harness.ClientGone):
+            with q.slot(on_wait=leave):
+                self.fail("should not run")
+        self.assertEqual(q._waiting, [])  # left cleanly
+        gate.set()
+        th.join(2)
+
+
+class ServerErrorTests(SettingsBase):
+    """HTTP-level behaviour of failures."""
+    serve, call = ManageApiTests.serve, ManageApiTests.call
+
+    def setUp(self):
+        super().setUp()
+        settings.save({"retries": 0})
+        self.real = harness.chat
+        self.addCleanup(lambda: setattr(harness, "chat", self.real))
+
+    def post(self, base, body, token=None, raw=None):
+        req = urllib.request.Request(base + "/task", raw if raw is not None else json.dumps(body).encode(),
+                                     {"Authorization": f"Bearer {token}"} if token else {})
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, e.read().decode()
+
+    def test_bad_requests_get_typed_4xx(self):
+        base = self.serve()
+        for raw, code in ((b"{nope", 400), (b"[1]", 400), (b"", 400)):
+            status, body = self.post(base, None, raw=raw)
+            self.assertEqual((status, json.loads(body)["kind"]), (code, "bad_request"), raw)
+        self.assertEqual(self.post(base, {"goal": 5})[0], 400)
+        self.assertEqual(self.post(base, {"session": "x"})[0], 400)
+        self.assertEqual(self.post(base, {})[0], 400)
+        for stream in (False, True):  # unknown session is plain HTTP 404 in both modes
+            status, body = self.post(base, {"session": 999, "stream": stream})
+            self.assertEqual((status, json.loads(body)["kind"]), (404, "not_found"))
+        self.assertEqual(self.call(base, "/nope")[0], 404)
+
+    def test_backend_failure_is_a_clear_reply_and_is_logged(self):
+        harness.chat = boom("upstream_down")
+        base = self.serve(HARNESS_ADMIN_TOKEN="adm")
+        status, body = self.post(base, {"goal": "x"})
+        b = json.loads(body)
+        self.assertEqual((status, b["kind"], b["retryable"], len(b["rid"])), (502, "upstream_down", True, 8))
+        self.assertIn("can't be reached", b["error"])
+        status, d = self.call(base, "/manage/errors")
+        self.assertEqual((status, d["errors"][0]["kind"], d["errors"][0]["rid"]), (200, "upstream_down", b["rid"]))
+        self.assertEqual(self.call(base, "/manage/manifest")[1]["stats"]["errors"], 1)
+
+    def test_stream_ends_with_error_event_then_retry_continues(self):
+        harness.chat = boom("upstream_5xx")
+        base = self.serve()
+        status, body = self.post(base, {"goal": "x", "stream": True})
+        evs = [json.loads(x[5:]) for x in body.split("\n\n") if x.startswith("data:")]
+        self.assertEqual([e["t"] for e in evs], ["session", "status", "error"])
+        err = evs[-1]
+        self.assertEqual((err["kind"], err["retryable"], err["d"] == err["msg"]), ("upstream_5xx", True, True))
+        harness.chat = lambda m, emit: ({"role": "assistant", "content": "fine"}, {})
+        status, body = self.post(base, {"session": evs[0]["id"], "retry": True})
+        self.assertEqual((status, json.loads(body)["reply"]), (200, "fine"))
+        sent = []
+        harness.chat = lambda m, emit: (sent.append(m), ({"role": "assistant", "content": "ok"}, {}))[1]
+        self.post(base, {"session": evs[0]["id"], "goal": "again"})
+        self.assertFalse(any((m.get("content") or "").startswith(errors.NOTE_PREFIX) for m in sent[0]))  # retry removed the note
+
+    def test_unexpected_exception_still_gets_a_reply(self):
+        def explode(m, emit):
+            raise KeyError("bug")
+        harness.chat = explode
+        base = self.serve()
+        status, body = self.post(base, {"goal": "x"})
+        self.assertEqual((status, json.loads(body)["kind"]), (500, "internal"))  # not a dropped connection
+
+    def test_busy_queued_and_keepalive(self):
+        gate, started = threading.Event(), threading.Event()
+
+        def slow(m, emit):
+            started.set()
+            gate.wait(5)
+            return {"role": "assistant", "content": "slow"}, {}
+        harness.chat = slow
+        settings.save({"max_queue": 1})
+        base = self.serve()
+        first = threading.Thread(target=self.post, args=(base, {"goal": "a"}))
+        first.start()
+        self.assertTrue(started.wait(2))
+        results = {}
+        with mock.patch.object(harness, "KEEPALIVE", 0.05):
+            second = threading.Thread(target=lambda: results.update(b=self.post(base, {"goal": "b", "stream": True})))
+            second.start()
+            time.sleep(0.4)  # b is now waiting in line and has been pinged
+            status, body = self.post(base, {"goal": "c"})  # line is full (limit 1)
+            self.assertEqual((status, json.loads(body)["kind"]), (503, "busy"))
+            gate.set()
+            first.join(3)
+            second.join(3)
+        status, raw = results["b"]
+        evs = [json.loads(x[5:]) for x in raw.split("\n\n") if x.startswith("data:")]
+        self.assertEqual(evs[0], {"t": "queued", "pos": 1})
+        self.assertEqual(evs[-1], {"t": "done"})
+        self.assertIn(": ka", raw)  # keepalive comments while waiting
 
 
 if __name__ == "__main__":

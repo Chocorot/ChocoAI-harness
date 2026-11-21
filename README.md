@@ -7,6 +7,8 @@ Python 3.11+ standard library only. About 35 MB RSS idle. State lives in one SQL
 |---|---|
 | `harness.py` | CLI, agent loop, streaming, context compaction, optional HTTP mode |
 | `tools.py` | The 4 tools (`read_file`, `edit_file`, `write_file`, `run_bash`) and their JSON schemas |
+| `errors.py` | The table of failure kinds: what the user sees, what the model is told, what is retried ([docs/errors.md](docs/errors.md)) |
+| `runq.py` | Bounded run queue: one run at a time, the rest wait in line ([docs/chat-streaming.md](docs/chat-streaming.md)) |
 | `index.html` | Chat web page served at `/` (HTML+JS, no build step) |
 | `settings.py` | The settings table (system prompt, model, max turns, compaction, temperature, max tokens): validation, JSON file next to the DB, manifest |
 | `db.py` | SQLite (`harness.db`): sessions, messages, token usage, tool audit log |
@@ -55,11 +57,16 @@ curl -s localhost:8080/health                                # harness alive -> 
 curl -s -XPOST localhost:8080/task -d '{"goal":"write hello.py and run it"}'
 # -> {"session": 3, "reply": "..."}
 curl -sN -XPOST localhost:8080/task -d '{"goal":"hi","stream":true}'
-# -> SSE lines: data: {"t":"session|think|text|tool|result|error|done", ...}
+# -> SSE lines: data: {"t":"queued|session|status|think|text|tool|result|retrying|error|done", ...}
 curl -s -XPOST localhost:8080/task -d '{"session":3,"goal":"now add a --name flag"}'
+curl -s -XPOST localhost:8080/task -d '{"session":3,"retry":true}'   # continue after a failed run
 ```
 
-One agent run at a time (others wait; `/health` and `/` stay responsive). `/task` executes shell commands. Set `HARNESS_TOKEN` and send
+Events, the queue and keepalive: [docs/chat-streaming.md](docs/chat-streaming.md). Failures are typed
+(`kind`, `retryable`, request id `rid`), retried when transient, and noted in the session so the model knows:
+[docs/errors.md](docs/errors.md).
+
+One agent run at a time (others wait in a line of at most `max_queue`, then get a `busy` answer; `/health` and `/` stay responsive). `/task` executes shell commands. Set `HARNESS_TOKEN` and send
 `-H "Authorization: Bearer $HARNESS_TOKEN"` on `/task` (`/health` stays open). Binding to any host other
 than 127.0.0.1 (as the Docker image does) refuses to start without `HARNESS_TOKEN` unless you set `HARNESS_OPEN=1` (deliberately unauthenticated: anyone who can reach it can run commands in the container). For a public hostname
 (e.g. a Cloudflare tunnel) also consider Cloudflare Access in front.
@@ -80,6 +87,7 @@ curl -s localhost:8080/manage/manifest -H "Authorization: Bearer $HARNESS_ADMIN_
 curl -s -XPUT localhost:8080/manage/settings -H "Authorization: Bearer $HARNESS_ADMIN_TOKEN" \
   -d '{"settings":{"max_turns":10,"temperature":0.2}}'                                    # all-or-nothing; 400 with the reason
 curl -s "localhost:8080/manage/sessions?limit=20" -H "Authorization: Bearer $HARNESS_ADMIN_TOKEN"
+curl -s "localhost:8080/manage/errors?limit=20" -H "Authorization: Bearer $HARNESS_ADMIN_TOKEN"     # newest 200 server errors
 ```
 A `null` value resets a setting to its default. `base_url` is shown read-only (it comes from the `BASE_URL` variable).
 The compose file carries the label `choc.ai.harness=<url>` so the node agent finds the container by itself.
@@ -126,7 +134,7 @@ Inspect the DB: `sqlite3 harness.db "select tool, result from audit order by id 
 
 - The workspace is a working directory, **not a sandbox**. File tools reject paths outside it, but a shell
   command can go anywhere. Use `--auto-approve` only in Docker or a throwaway user.
-- Token counts are estimates. If the real window is exceeded you will get a backend error; lower `COMPACT_AT` in `harness.py`.
-- No retries on backend errors: the run stops and prints the session id so you can resume.
-- Model "thinking" output (`reasoning_content`) is ignored.
+- Token counts are estimates. If the real window is exceeded the harness shrinks the history once and retries; if that is not enough you get a `context_overflow` error (lower the `compact_at` setting).
+- Transient backend errors are retried (`retries` setting). Anything else stops the run, saves a failure note in the session and tells the user why; resume with `--session` or `{"retry": true}`.
+- Thinking is shown only when the backend sends `reasoning_content`; it is never stored in history.
 - `/task` runs shell commands: never run it open on a public hostname. Set `HARNESS_TOKEN` (the 2026-11-20 server fix) and consider Cloudflare Access in front.

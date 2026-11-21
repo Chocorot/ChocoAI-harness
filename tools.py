@@ -21,6 +21,18 @@ SCHEMAS = [
 ]
 
 
+def err(code, msg, hint=""):
+    """Every tool failure has this shape, so the model can tell what went wrong and the UI can show it as a failure."""
+    return f"error[{code}]: {msg}" + (f". {hint}" if hint else "")
+
+
+# exception type -> (code, hint) for failures a tool did not handle itself
+_CODES = {TypeError: ("bad_args", "check the argument names against the tool schema"),
+          FileNotFoundError: ("not_found", "check the path with run_bash ls"),
+          PermissionError: ("permission", "that path is not accessible"),
+          ValueError: ("invalid", "use a path inside the workspace")}
+
+
 def _path(ws, p):
     full = (ws / p).resolve()  # absolute p replaces ws, resolve() follows symlinks
     if not full.is_relative_to(ws.resolve()):
@@ -40,7 +52,7 @@ def edit_file(ws, path, old_text, new_text):
     text = p.read_text()
     n = text.count(old_text) if old_text else 0
     if n != 1:
-        return f"error: old_text found {n} times, need exactly 1 (add context to make it unique)"
+        return err("edit_mismatch", f"old_text found {n} times, need exactly 1", "add surrounding context to make it unique")
     p.write_text(text.replace(old_text, new_text, 1))
     return "ok"
 
@@ -54,12 +66,12 @@ def write_file(ws, path, content):
 
 def run_bash(ws, command, timeout=30, auto_approve=False):
     if not auto_approve and input(f"\nrun `{command}`? [y/N] ").strip().lower() != "y":
-        return "error: command denied by user"
+        return err("denied", "command denied by user")
     try:
         r = subprocess.run(command, shell=True, cwd=ws, capture_output=True, text=True,
                            errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
-        return f"error: timeout after {timeout}s"
+        return err("timeout", f"timeout after {timeout}s", "use a longer timeout or a shorter command")
     return f"exit={r.returncode}\nstdout:\n{r.stdout[:LIMIT]}\nstderr:\n{r.stderr[:LIMIT]}"
 
 
@@ -67,10 +79,11 @@ def run(name, args, ws, auto_approve=False):
     ws = Path(ws)
     handlers = {"read_file": read_file, "edit_file": edit_file, "write_file": write_file}
     if name != "run_bash" and name not in handlers:
-        return f"error: unknown tool {name}"
+        return err("unknown_tool", f"unknown tool {name}", "use only the listed tools")
     try:
         if name == "run_bash":
             return run_bash(ws, auto_approve=auto_approve, **args)
         return handlers[name](ws, **args)
     except Exception as e:  # bad args, missing file, permission, outside workspace...
-        return f"error: {type(e).__name__}: {e}"
+        code, hint = next((v for t, v in _CODES.items() if isinstance(e, t)), ("tool_failed", ""))
+        return err(code, f"{type(e).__name__}: {e}", hint)

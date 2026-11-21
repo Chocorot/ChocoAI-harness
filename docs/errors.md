@@ -1,0 +1,51 @@
+# Errors
+
+Code: `errors.py` (the table), `harness.py` (`chat`, `call_model`, `run_agent`, `_guard`), `tools.py` (`err`), `db.py` (`errors` table).
+Tests: `ErrorTests`, `CallModelTests`, `FailureMemoryTests`, `ServerErrorTests` in `test_harness.py`.
+
+## One table
+- `errors.KINDS`: one row per failure kind: HTTP `status`, `retryable` (UI shows Retry), `auto` (harness retries by itself), `msg` (plain words for the user), `hint` (what the model is told).
+- A new kind = a new row. `HarnessError(kind, code=..., detail=...)`: `kind` is the category, `code` the specific cause (`http_502`, `refused`, `timeout`...).
+- Unknown exceptions become `internal` (traceback to stderr, never shown to the user).
+
+| kind | when | auto-retry | Retry button |
+|---|---|---|---|
+| upstream_down | backend refused / DNS / connection dropped | yes | yes |
+| upstream_timeout | no answer within 600 s | no | yes |
+| upstream_5xx | backend 5xx or 429 | yes | yes |
+| upstream_4xx | backend rejected the request | no | no |
+| upstream_auth | backend 401/403 (gateway key wrong) | no | no |
+| upstream_bad_stream | garbled or cut-off reply | yes | yes |
+| context_overflow | prompt does not fit the window | shrinks once | no |
+| busy | run queue full | no | yes |
+| bad_request / not_found / auth | client mistakes (400 / 404 / 401) | no | no |
+| internal | bug in the harness | no | yes |
+
+The backend's own HTTP error body is read (bounded) and kept in `detail`; context overflow is recognised from it (`errors.OVERFLOW`).
+
+## What the user sees
+- Non-stream `/task`: HTTP status from the table and `{"error": msg, "kind", "code", "retryable", "rid"}`.
+- Stream: a terminal SSE event `{"t":"error","kind","code","msg","retryable","detail","rid","note","d"}` (`d` = `msg`, for the old page). `rid` is an 8-char request id, also in the log: quote it when reporting a problem.
+- `{"t":"retrying","attempt","in","kind","msg","reset"}` before each automatic retry. `reset:true` means the reply already started: the page must discard the half-streamed text.
+- Tool failures stay in the stream as `result` events with `ok:false`.
+
+## What the model sees
+- Tool errors have one shape: `error[code]: what happened. hint` (`tools.err`). Codes: `edit_mismatch`, `denied`, `timeout`, `unknown_tool`, `bad_args`, `not_found`, `permission`, `invalid`, `tool_failed`, `interrupted`.
+- When a run fails, a note is saved in the session as an assistant message: `[run failed: kind/code] message hint`. The next turn sees it and can adapt (for example do a smaller step after a timeout).
+- `{"session": id, "retry": true}` (no new goal) removes that note and continues where it stopped.
+- A crash between a tool call and its result leaves an orphan call, which backends reject. `repair_tail` adds stub results (`error[interrupted]`) on resume and before the failure note. Only the tail is repaired: orphans in the middle of very old sessions are not.
+
+## Recovery (`harness.call_model`)
+- Transient kinds (`auto`) are retried `retries` times (setting, default 2) with waits 2 s, 6 s, 15 s (`errors.BACKOFF`).
+- Context overflow: one retry with the history shrunk harder (`compact(messages, 1, keep_turns // 2)`). If nothing can be shrunk the user gets `context_overflow`.
+- A 600 s timeout is never auto-retried (that would be 30 minutes of waiting).
+
+## Catch-all and logging
+- `_guard` wraps every request: whatever fails becomes a typed reply, JSON or an SSE error event. The socket is never closed silently.
+- Bad JSON, bad types, missing or oversize body (1 MB): 400 `bad_request`. Unknown session: 404 before any stream opens.
+- Server errors are logged as one JSON line on stderr and stored in the `errors` table (newest 200). Client mistakes (auth, not_found, bad_request, busy) are not logged.
+- `GET /manage/errors?limit=N` (admin token) returns them; `/manage/manifest` `stats.errors` is the count.
+
+## Known gaps
+- The current `index.html` shows only the message text of an error (no Retry button, ignores `retrying` and `queued`). A mid-stream auto-retry can show duplicated text there. Fixed by the frontend rewrite (phase 4).
+- CLI: failures exit with `message [kind/code] (session N saved ...)`; there is no `--retry` flag.

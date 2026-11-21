@@ -2,20 +2,28 @@
 """Tiny coding-agent harness for small-context local models. Stdlib only."""
 import argparse
 import hmac
+import http.client
 import json
 import os
 import sys
 import threading
+import time
+import traceback
 import urllib.parse
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import db
+import errors
+import runq
 import settings
 import tools
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
+KEEPALIVE = 10  # seconds between SSE comment pings; keeps proxies (Cloudflare) from cutting a silent stream
+MAX_BODY = 1_000_000  # bytes accepted on /task
 
 COMPACT_AT = settings.default("compact_at")  # default only; the live value is settings.get("compact_at")
 
@@ -33,11 +41,12 @@ def est_tokens(messages):
     return len(json.dumps(messages)) // 4
 
 
-def compact(messages):
-    """Shrink old tool traffic; keep system, original goal and the last `keep_turns` turns intact."""
-    if est_tokens(messages) <= settings.get("compact_at"):
+def compact(messages, limit=None, keep=None):
+    """Shrink old tool traffic; keep system, original goal and the last `keep_turns` turns intact.
+    `limit`/`keep` override the settings (used to shrink harder after a context overflow)."""
+    if est_tokens(messages) <= (limit or settings.get("compact_at")):
         return messages
-    keep = settings.get("keep_turns")
+    keep = keep or settings.get("keep_turns")
     turns = [i for i, m in enumerate(messages) if m["role"] == "assistant"]
     if len(turns) <= keep:
         return messages
@@ -117,45 +126,117 @@ def chat(messages, emit=cli_emit):
         json.dumps(body).encode(),
         {"Content-Type": "application/json",
          "Authorization": "Bearer " + os.environ.get("API_KEY", "lm-studio")})
-    with urllib.request.urlopen(req, timeout=600) as r:
-        return parse_sse(r, emit)
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            return parse_sse(r, emit)
+    except (OSError, http.client.HTTPException, ValueError) as e:  # backend down/slow/erroring or a garbled stream
+        raise errors.from_upstream(e) from e
+
+
+def call_model(messages, emit, chat_fn, sleep=time.sleep):
+    """One model call with recovery. Transient failures are retried (settings `retries`, backoff in errors.BACKOFF);
+    a context overflow is retried once with the history shrunk harder. Returns (message, usage, what_was_sent).
+    Raises HarnessError. `retrying.reset` tells the page to discard a half-streamed reply before the retry."""
+    sent, shrunk, attempt = compact(messages), False, 0
+    while True:
+        streamed = []
+
+        def spy(ev):
+            if ev["t"] in ("text", "think"):
+                streamed.append(1)
+            emit(ev)
+
+        try:
+            msg, usage = chat_fn(sent, spy)
+            return msg, usage, sent
+        except Exception as e:
+            err = errors.classify(e)  # chat() already turned backend failures into HarnessError
+            if err.kind == "context_overflow" and not shrunk:
+                shrunk, smaller = True, compact(messages, 1, max(1, settings.get("keep_turns") // 2))
+                if est_tokens(smaller) < est_tokens(sent):
+                    sent = smaller
+                    emit({"t": "retrying", "attempt": attempt, "in": 0, "kind": err.kind, "msg": "Shrinking the history to fit.",
+                          "reset": bool(streamed)})
+                    continue
+            elif err.auto and attempt < settings.get("retries"):
+                wait = errors.BACKOFF[min(attempt, len(errors.BACKOFF) - 1)]
+                attempt += 1
+                emit({"t": "retrying", "attempt": attempt, "in": wait, "kind": err.kind, "msg": err.message,
+                      "reset": bool(streamed)})
+                sleep(wait)
+                continue
+            raise err from e
+
+
+def repair_tail(conn, sid, messages):
+    """A crash between an assistant message with tool calls and its tool results leaves calls without results, which
+    the backend rejects on resume. Add a stub result for each missing one (in memory and in the DB)."""
+    i = len(messages)
+    while i and messages[i - 1]["role"] == "tool":
+        i -= 1
+    if not i or not messages[i - 1].get("tool_calls"):
+        return
+    done = {m["tool_call_id"] for m in messages[i:]}
+    for tc in messages[i - 1]["tool_calls"]:
+        if tc["id"] not in done:
+            m = {"role": "tool", "tool_call_id": tc["id"], "content": tools.err(
+                "interrupted", "the run stopped before this tool finished", "call it again if it is still needed")}
+            messages.append(m)
+            db.save_msg(conn, sid, m)
 
 
 def run_agent(conn, sid, messages, ws, auto_approve, max_turns=None, chat_fn=None, emit=cli_emit):
-    """Loop until the model answers without tool calls. Returns the final text."""
+    """Loop until the model answers without tool calls. Returns the final text.
+    Any failure is saved into the session as a note (so the model's next turn knows) and raised as a HarnessError."""
     chat_fn = chat_fn or chat  # resolved at call time so tests can patch it
     max_turns = max_turns or settings.get("max_turns")  # an explicit value (CLI flag) wins over the saved setting
-    for turn in range(max_turns):
-        sent = compact(messages)
-        msg, usage = chat_fn(sent, emit)
-        db.log_usage(conn, sid, turn, usage.get("prompt_tokens"), usage.get("completion_tokens"), est_tokens(sent))
-        messages.append(msg)
-        db.save_msg(conn, sid, msg)
-        if not msg.get("tool_calls"):
-            return msg["content"] or ""
-        for tc in msg["tool_calls"]:
-            name = tc["function"]["name"]
-            try:
-                args = json.loads(tc["function"]["arguments"] or "{}")
-                emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
-                result = tools.run(name, args, ws, auto_approve)
-            except json.JSONDecodeError as e:
-                args, result = tc["function"]["arguments"], f"error: invalid JSON arguments: {e}"
-                emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
-            emit({"t": "result", "id": tc["id"], "d": str(result)[:2000]})
-            db.log_tool(conn, sid, name, args, result)
-            tm = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
-            messages.append(tm)
-            db.save_msg(conn, sid, tm)
-    return f"[stopped: max_turns={max_turns} reached]"
+    try:
+        for turn in range(max_turns):
+            emit({"t": "status", "phase": "model", "turn": turn + 1, "max": max_turns})
+            msg, usage, sent = call_model(messages, emit, chat_fn)
+            db.log_usage(conn, sid, turn, usage.get("prompt_tokens"), usage.get("completion_tokens"), est_tokens(sent))
+            messages.append(msg)
+            db.save_msg(conn, sid, msg)
+            if not msg.get("tool_calls"):
+                return msg["content"] or ""
+            for tc in msg["tool_calls"]:
+                name = tc["function"]["name"]
+                emit({"t": "status", "phase": "tool", "name": name})
+                try:
+                    args = json.loads(tc["function"]["arguments"] or "{}")
+                    emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
+                    result = tools.run(name, args, ws, auto_approve)
+                except json.JSONDecodeError as e:
+                    args = tc["function"]["arguments"]
+                    result = tools.err("bad_args", f"invalid JSON arguments: {e}", "resend the call with valid JSON")
+                    emit({"t": "tool", "id": tc["id"], "name": name, "args": args})
+                emit({"t": "result", "id": tc["id"], "d": str(result)[:2000], "ok": not str(result).startswith("error")})
+                db.log_tool(conn, sid, name, args, result)
+                tm = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
+                messages.append(tm)
+                db.save_msg(conn, sid, tm)
+        return f"[stopped: max_turns={max_turns} reached]"
+    except Exception as e:
+        err = errors.classify(e)
+        repair_tail(conn, sid, messages)  # keep the history valid before the note goes in
+        note = {"role": "assistant", "content": err.note()}
+        messages.append(note)
+        db.save_msg(conn, sid, note)
+        raise err from e
 
 
-def start(conn, goal, session):
-    """Create or resume a session, add the goal as a user message. Returns (sid, messages)."""
+def start(conn, goal, session, retry=False):
+    """Create or resume a session, add the goal as a user message. Returns (sid, messages).
+    `retry` removes the failure note of the last run so the model simply continues where it stopped."""
     if session:
         if not db.session_exists(conn, session):
-            sys.exit(f"no such session: {session}")
+            raise errors.HarnessError("not_found", f"no such session: {session}")
         sid, messages = session, db.load(conn, session)
+        if retry and messages and messages[-1]["role"] == "assistant" and \
+                (messages[-1].get("content") or "").startswith(errors.NOTE_PREFIX):
+            messages.pop()
+            db.drop_last(conn, sid)
+        repair_tail(conn, sid, messages)
         if messages and messages[0]["role"] == "system":  # a saved prompt edit applies to resumed sessions too
             messages[0] = {"role": "system", "content": settings.get("system_prompt")}
     else:
@@ -180,11 +261,45 @@ def manifest(busy):
             "settings": settings.manifest(), "stats": stats}
 
 
+class ClientGone(Exception):
+    """The browser left while its run was still waiting in line: drop it quietly."""
+
+
+class Sse:
+    """Server-sent events writer. Thread-safe (run thread + keepalive thread); remembers when the client has left."""
+
+    def __init__(self, wfile):
+        self.w, self.lock, self.alive = wfile, threading.Lock(), True
+
+    def _write(self, data):
+        with self.lock:
+            if self.alive:
+                try:
+                    self.w.write(data)
+                    self.w.flush()
+                except OSError:  # client left; let a running run finish so history stays consistent
+                    self.alive = False
+
+    def event(self, ev):
+        self._write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+
+    def ping(self):
+        self._write(b": ka\n\n")  # SSE comment: ignored by the page, resets proxy idle timers
+
+
+def keepalive(sse, stop):
+    while not stop.wait(KEEPALIVE):  # module global read each loop so tests can shorten it
+        sse.ping()
+
+
 def make_server(host, port, ws, max_turns):
-    lock = threading.Lock()  # one agent run at a time: the local model serves one stream anyway
+    queue = runq.RunQueue(lambda: settings.get("max_queue"))  # one agent run at a time: the local model serves one stream
     page = Path(__file__).with_name("index.html")
 
     class H(BaseHTTPRequestHandler):
+        sse = None  # set once this request turned into an event stream
+        sid = None
+
         def _send(self, code, body, ctype="application/json"):
             data = body if isinstance(body, bytes) else json.dumps(body).encode()
             self.send_response(code)
@@ -192,6 +307,37 @@ def make_server(host, port, ws, max_turns):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+
+        def _guard(self, fn):
+            """Run a handler. Whatever fails becomes a typed error reply (JSON, or an SSE error event once streaming):
+            the socket is never closed silently."""
+            rid = uuid.uuid4().hex[:8]
+            try:
+                fn(rid)
+            except ClientGone:
+                pass
+            except Exception as e:
+                err = errors.classify(e)
+                if err.kind == "internal":
+                    traceback.print_exc()
+                if err.kind not in ("auth", "not_found", "bad_request", "busy"):  # client mistakes would only fill the log
+                    self._log(rid, err)
+                try:
+                    self.sse.event(err.event(rid)) if self.sse else self._send(err.status, err.body(rid))
+                except OSError:
+                    pass  # client already gone
+
+        def _log(self, rid, err):
+            print(json.dumps({"ts": round(time.time(), 3), "rid": rid, "session": self.sid, "kind": err.kind,
+                              "code": err.code, "msg": err.message, "detail": err.detail[:300]}), file=sys.stderr)
+            try:
+                conn = db.connect()
+                try:
+                    db.log_error(conn, rid, self.sid, err)
+                finally:
+                    conn.close()
+            except Exception:  # logging must never hide the real reply
+                pass
 
         def _manage(self, method):
             """Admin API for the dashboard (via the node agent). Its own token, independent of /task. No token set = no API."""
@@ -202,14 +348,16 @@ def make_server(host, port, ws, max_turns):
                 return self._send(401, {"error": "unauthorized"})
             url = urllib.parse.urlparse(self.path)
             if method == "GET" and url.path == "/manage/manifest":
-                return self._send(200, manifest(lock.locked()))
-            if method == "GET" and url.path == "/manage/sessions":
+                return self._send(200, manifest(queue.busy()))
+            if method == "GET" and url.path in ("/manage/sessions", "/manage/errors"):
                 try:
                     limit = max(1, min(200, int(urllib.parse.parse_qs(url.query).get("limit", ["50"])[0])))
                 except ValueError:
                     return self._send(400, {"error": "limit must be a number"})
                 conn = db.connect()
                 try:
+                    if url.path == "/manage/errors":
+                        return self._send(200, {"errors": db.list_errors(conn, limit)})
                     return self._send(200, {"sessions": db.list_sessions(conn, limit)})
                 finally:
                     conn.close()
@@ -221,13 +369,17 @@ def make_server(host, port, ws, max_turns):
                 _, err = settings.save(req.get("settings") if isinstance(req, dict) else None)
                 if err:
                     return self._send(400, {"error": err})
-                return self._send(200, manifest(lock.locked()))
+                return self._send(200, manifest(queue.busy()))
             self._send(404, {"error": "not found"})
 
         def do_PUT(self):
-            self._manage("PUT") if self.path.startswith("/manage/") else self._send(404, {"error": "not found"})
+            self._guard(lambda rid: self._manage("PUT") if self.path.startswith("/manage/")
+                        else self._send(404, {"error": "not found"}))
 
         def do_GET(self):
+            self._guard(self._get)
+
+        def _get(self, rid):
             if self.path.startswith("/manage/"):
                 return self._manage("GET")
             if self.path == "/health":
@@ -237,56 +389,80 @@ def make_server(host, port, ws, max_turns):
             else:
                 self._send(404, {"error": "not found"})
 
-        def _stream(self, conn, sid, messages):
-            self.send_response(200)  # no Content-Length: HTTP/1.0 close-delimited body
-            for k, v in (("Content-Type", "text/event-stream"), ("Cache-Control", "no-cache"),
-                         ("X-Accel-Buffering", "no")):
-                self.send_header(k, v)
-            self.end_headers()
-            alive = True
-
-            def emit(ev):
-                nonlocal alive
-                if alive:
-                    try:
-                        self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
-                        self.wfile.flush()
-                    except OSError:  # client left; let the run finish so history stays consistent
-                        alive = False
-
-            emit({"t": "session", "id": sid})
+        def _json_body(self):
             try:
-                reply = run_agent(conn, sid, messages, ws, True, max_turns, emit=emit)
-                if reply.startswith("[stopped"):
-                    emit({"t": "text", "d": "\n\n" + reply})
-                emit({"t": "done"})
-            except (OSError, ValueError) as e:  # backend down, bad stream
-                emit({"t": "error", "d": f"{type(e).__name__}: {e}"})
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = -1
+            if not 0 < n <= MAX_BODY:
+                raise errors.HarnessError("bad_request", "Request body is missing or too large.")
+            try:
+                req = json.loads(self.rfile.read(n))
+            except ValueError:
+                raise errors.HarnessError("bad_request", "Request body must be JSON.") from None
+            if not isinstance(req, dict):
+                raise errors.HarnessError("bad_request", "Request body must be a JSON object.")
+            return req
 
         def do_POST(self):
+            self._guard(self._post)
+
+        def _post(self, rid):
             if self.path != "/task":
-                return self._send(404, {"error": "not found"})
+                raise errors.HarnessError("not_found")
             tok = os.environ.get("HARNESS_TOKEN")
             if tok and not hmac.compare_digest(self.headers.get("Authorization", ""), f"Bearer {tok}"):
-                return self._send(401, {"error": "unauthorized"})
-            conn = None
-            try:
-                req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-                if not req.get("goal") and not req.get("session"):
-                    return self._send(400, {"error": "goal or session required"})
-                with lock:
-                    conn = db.connect()
-                    sid, messages = start(conn, req.get("goal"), req.get("session"))
-                    if req.get("stream"):
-                        self._stream(conn, sid, messages)
-                    else:
-                        reply = run_agent(conn, sid, messages, ws, True, max_turns, emit=lambda e: None)
-                        self._send(200, {"session": sid, "reply": reply})
-            except (ValueError, OSError, SystemExit) as e:  # bad JSON, backend down, unknown session
-                self._send(500, {"error": f"{type(e).__name__}: {e}"})
-            finally:
-                if conn:
+                raise errors.HarnessError("auth")
+            req = self._json_body()
+            goal, session, retry = req.get("goal"), req.get("session"), bool(req.get("retry"))
+            if not goal and not session:
+                raise errors.HarnessError("bad_request", "goal or session required")
+            if session is not None and (isinstance(session, bool) or not isinstance(session, int)):
+                raise errors.HarnessError("bad_request", "session must be a number")
+            if goal is not None and not isinstance(goal, str):
+                raise errors.HarnessError("bad_request", "goal must be text")
+            if session:  # answer 404 as plain HTTP, before an event stream is opened
+                conn = db.connect()
+                try:
+                    if not db.session_exists(conn, session):
+                        raise errors.HarnessError("not_found", f"no such session: {session}")
+                finally:
                     conn.close()
+            emit, stop = (lambda ev: None), None
+            if req.get("stream"):
+                self.send_response(200)  # no Content-Length: HTTP/1.0 close-delimited body
+                for k, v in (("Content-Type", "text/event-stream"), ("Cache-Control", "no-cache"),
+                             ("X-Accel-Buffering", "no")):
+                    self.send_header(k, v)
+                self.end_headers()
+                self.sse = Sse(self.wfile)
+                emit, stop = self.sse.event, threading.Event()
+                threading.Thread(target=keepalive, args=(self.sse, stop), daemon=True).start()
+
+            def on_wait(ahead):
+                if self.sse and not self.sse.alive:
+                    raise ClientGone
+                emit({"t": "queued", "pos": ahead})
+
+            try:
+                with queue.slot(on_wait=on_wait, tick=KEEPALIVE):
+                    conn = db.connect()
+                    try:
+                        sid, messages = start(conn, goal, session, retry)
+                        self.sid = sid
+                        emit({"t": "session", "id": sid})
+                        reply = run_agent(conn, sid, messages, ws, True, max_turns, emit=emit)
+                        if self.sse:
+                            if reply.startswith("[stopped"):
+                                emit({"t": "text", "d": "\n\n" + reply})
+                            emit({"t": "done"})
+                        else:
+                            self._send(200, {"session": sid, "reply": reply})
+                    finally:
+                        conn.close()
+            finally:
+                if stop:
+                    stop.set()
 
     return ThreadingHTTPServer((host, port), H)
 
@@ -315,12 +491,15 @@ def main():
     conn = db.connect()
     if not a.goal and not a.session:
         ap.error("give a goal or --session")
-    sid, messages = start(conn, a.goal, a.session)
+    try:
+        sid, messages = start(conn, a.goal, a.session)
+    except errors.HarnessError as e:
+        sys.exit(e.message)
     print(f"[session {sid}]", file=sys.stderr)
     try:
         reply = run_agent(conn, sid, messages, ws, a.auto_approve, a.max_turns)
-    except OSError as e:  # URLError, connection refused, timeout
-        sys.exit(f"backend error: {e} (session {sid} saved; resume with --session {sid})")
+    except errors.HarnessError as e:
+        sys.exit(f"{e.message} [{e.kind}/{e.code}] (session {sid} saved; resume with --session {sid})")
     print("\n" + reply if reply.startswith("[stopped") else "")
 
 

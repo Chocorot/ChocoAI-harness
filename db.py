@@ -11,8 +11,11 @@ CREATE TABLE IF NOT EXISTS usage(id INTEGER PRIMARY KEY, session INTEGER, turn I
   prompt_tokens INTEGER, completion_tokens INTEGER, est_tokens INTEGER);
 CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, ts REAL, session INTEGER,
   tool TEXT, args TEXT, result TEXT);
+CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY, ts REAL, rid TEXT, session INTEGER,
+  kind TEXT, code TEXT, message TEXT, detail TEXT);
 CREATE INDEX IF NOT EXISTS msg_session ON messages(session);
 """
+ERROR_KEEP = 200  # the errors table is a ring: only the newest rows are kept
 
 
 def connect(path=None):
@@ -42,6 +45,24 @@ def save_msg(db, sid, msg):
     db.commit()
 
 
+def drop_last(db, sid):
+    """Delete the newest message of a session (used to remove a failure note before a retry)."""
+    db.execute("DELETE FROM messages WHERE id=(SELECT MAX(id) FROM messages WHERE session=?)", (sid,))
+    db.commit()
+
+
+def log_error(db, rid, sid, err):
+    db.execute("INSERT INTO errors(ts, rid, session, kind, code, message, detail) VALUES(?,?,?,?,?,?,?)",
+               (time.time(), rid, sid, err.kind, err.code, err.message, err.detail[:500]))
+    db.execute("DELETE FROM errors WHERE id <= (SELECT MAX(id) FROM errors) - ?", (ERROR_KEEP,))
+    db.commit()
+
+
+def list_errors(db, limit=50):
+    rows = db.execute("SELECT ts, rid, session, kind, code, message, detail FROM errors ORDER BY id DESC LIMIT ?", (limit,))
+    return [dict(zip(("ts", "rid", "session", "kind", "code", "message", "detail"), r)) for r in rows]
+
+
 def log_usage(db, sid, turn, prompt, completion, est):
     db.execute("INSERT INTO usage(session, turn, prompt_tokens, completion_tokens, est_tokens)"
                " VALUES(?,?,?,?,?)", (sid, turn, prompt, completion, est))
@@ -61,7 +82,8 @@ def stats(db):
             "turns": q("SELECT COUNT(*) FROM usage"),
             "promptTokens": q("SELECT COALESCE(SUM(prompt_tokens),0) FROM usage"),
             "completionTokens": q("SELECT COALESCE(SUM(completion_tokens),0) FROM usage"),
-            "toolCalls": q("SELECT COUNT(*) FROM audit")}
+            "toolCalls": q("SELECT COUNT(*) FROM audit"),
+            "errors": q("SELECT COUNT(*) FROM errors")}
 
 
 def list_sessions(db, limit=50):
