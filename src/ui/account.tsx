@@ -41,7 +41,7 @@ export function AccountDialog({ open, onOpenChange, me, hasPublicChat, install, 
             </>
           )}
           {signedIn && me.capabilities.accountUrl ? (
-            <Button variant="outline" className="w-full" asChild><a href={me.capabilities.accountUrl}><UserCog /> Account settings</a></Button>
+            <Button variant="outline" className="w-full" asChild><a href={me.capabilities.accountUrl} target="_blank" rel="noopener noreferrer"><UserCog /> Account settings</a></Button>
           ) : null}
           {signedIn ? <p className="text-muted-foreground -mt-1 text-xs">Your name, password and signed-in devices are managed in your Choco account.</p> : null}
           <div className="grid grid-cols-3 gap-2" role="group" aria-label="Theme">
