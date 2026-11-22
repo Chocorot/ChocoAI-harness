@@ -1,13 +1,14 @@
 'use client'
 
-import { ArrowDown, Menu, Plus, RefreshCw, Sparkles, User } from 'lucide-react'
+import { ArrowDown, RefreshCw } from 'lucide-react'
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { AppHeader } from '@chocorot/design/shell/app-header'
 import { BrandMark } from '@chocorot/design/shell/brand-mark'
 import { Button } from '@chocorot/design/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@chocorot/design/ui/dialog'
 import { AccountDialog } from './account'
+import { ChocoAiMark } from './brand-icon'
+import { ChatHeader, SidebarTop, SidebarUser } from './chat-header'
 import { AutomationsDialog } from './automations'
 import { ChatList } from './chat-list'
 import { AttChip, Composer, type Pending } from './composer'
@@ -25,7 +26,7 @@ const SUGGESTIONS = [ // `needs`: shown only when the caller's tools include it
   { text: "Search the web for today's top tech news", needs: 'web_search' },
   { text: 'Make a 3-step plan to learn Python, then do step 1', needs: 'update_plan' },
 ]
-const OFFLINE: Me = { mode: 'public', address: null, capabilities: { login: false, tools: [], shell: false, history: 'client' } }
+const OFFLINE: Me = { mode: 'public', address: null, capabilities: { login: false, accountUrl: null, silentLogin: false, tools: [], shell: false, history: 'client' } }
 
 type Hist = { role: 'user' | 'assistant'; content: string; hidden?: boolean }
 type Sheet = 'chats' | 'automations' | 'account' | null
@@ -315,7 +316,12 @@ export function App() {
       toast(q === 'denied' ? 'That account is not allowed to use ChocoAI.' : 'Sign-in failed. Try again.')
       history.replaceState(null, '', location.pathname + location.hash)
     }
-    void refreshMe().then(() => F.current.route(true))
+    void refreshMe().then((m) => {
+      // A visitor whose browser may already be signed in at the SSO: ask once, quietly (no toast on a "no"), then carry on at the same address.
+      // Not right after a failed sign-in (?signin=...): that already said what happened.
+      if (m.capabilities.silentLogin && !q) return void location.assign(`/api/auth/sso/start?silent=1&next=${encodeURIComponent(location.pathname + location.hash)}`)
+      F.current.route(true)
+    })
     const onHash = () => F.current.route()
     const onInstall = (e: Event) => { e.preventDefault(); const ev = e as Event & { prompt: () => Promise<void> }; setInstall({ prompt: ev.prompt.bind(ev) }) }
     addEventListener('hashchange', onHash)
@@ -358,25 +364,15 @@ export function App() {
 
   return (
     <div className="flex overflow-hidden" style={{ height: 'var(--app-h, 100dvh)' }}>
-      {sideVisible ? <aside className="bg-sidebar flex w-72 shrink-0 flex-col gap-2 border-r p-3" aria-label="Chats">{chatList}</aside> : null}
+      {sideVisible ? (
+        <aside className="bg-sidebar flex w-72 shrink-0 flex-col gap-2 border-r p-3" aria-label="Chats">
+          <SidebarTop onClose={toggleSide} />
+          {chatList}
+          <SidebarUser me={me} onClick={() => setSheet('account')} />
+        </aside>
+      ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
-        <AppHeader
-          brand="ChocoAI"
-          brandIcon={Sparkles}
-          home="/"
-          items={[]}
-          fluid
-          end={
-            <>
-              {u && !sideVisible ? <Button variant="ghost" size="icon" aria-label="New chat" onClick={goNew}><Plus /></Button> : null}
-              {u ? <Button variant="ghost" size="icon" aria-label={wide ? (side ? 'Close sidebar' : 'Open sidebar') : 'Chats'} onClick={() => (wide ? toggleSide() : setSheet('chats'))}><Menu /></Button> : null}
-              <Button variant="ghost" size="icon" aria-label="Account" onClick={() => setSheet('account')}>
-                {me.address ? <span className="bg-primary text-primary-foreground grid size-6 place-items-center rounded-full text-xs font-semibold">{me.address[0]!.toUpperCase()}</span> : <User />}
-              </Button>
-            </>
-          }
-        />
-        {title ? <p className="text-muted-foreground truncate border-b px-4 py-1 text-center text-xs" data-testid="chat-title">{title}</p> : null}
+        <ChatHeader me={me} user={u} wide={wide} sideVisible={sideVisible} title={title} onToggleSide={toggleSide} onChats={() => setSheet('chats')} onNew={goNew} onAccount={() => setSheet('account')} />
         <div className="relative min-h-0 flex-1">
           <div
             ref={scroller}
@@ -390,9 +386,10 @@ export function App() {
             <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6" data-testid="messages">
               {items.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-16 text-center">
-                  <BrandMark icon={Sparkles} size="lg" />
+                  <BrandMark icon={ChocoAiMark} size="lg" />
                   <h2 className="text-2xl font-semibold tracking-tight">How can I help?</h2>
                   <p className="text-muted-foreground">{u ? 'What are we working on?' : 'Ask anything.'}</p>
+                  {!u && me.capabilities.login ? <p className="text-muted-foreground text-sm"><a href="/api/auth/sso/start" className="text-primary underline-offset-4 hover:underline">Sign in</a> for saved chats and tools.</p> : null}
                   <div className="flex max-w-xl flex-wrap justify-center gap-2 pt-2">
                     {chips.map((s) => <Button key={s.text} variant="outline" size="sm" className="h-auto py-1.5 whitespace-normal" onClick={() => void send(s.text)}>{s.text}</Button>)}
                   </div>
@@ -409,7 +406,7 @@ export function App() {
                   </div>
                 ) : (
                   <div key={it.id} className="flex gap-3">
-                    <BrandMark icon={Sparkles} className="mt-0.5" />
+                    <BrandMark icon={ChocoAiMark} className="mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <TurnView turn={it.turn} version={it.turn.version} onRetry={() => retry(it.turn)} onContinue={() => void send('continue')} />
                       {it.turn.finished && it.turn.answerText() ? (

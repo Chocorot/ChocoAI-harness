@@ -17,7 +17,8 @@ import { publicChat, runSession } from './chat.ts'
 import { ATTACH_BODY, bearerOk, guarded, json, MAX_BODY, needUser, readJson, sameOrigin, siteUrl, who } from './http.ts'
 import { manifest } from './manifest.ts'
 import { cookieValue, SESSION_COOKIE, unsealSession } from './session.ts'
-import { ssoConfig } from './sso.ts'
+import { SILENT_COOKIE, SILENT_SECONDS } from './silent.ts'
+import { accountUrl, ssoConfig } from './sso.ts'
 import { activeKey, shared, workspace } from './state.ts'
 
 /** Run `fn` against the signed-in caller's own DB file (another user's rows are not even reachable). */
@@ -44,6 +45,10 @@ export const me = (req: Request) =>
       address,
       capabilities: {
         login: ssoConfig() !== null,
+        // name, password and signed-in devices live at the SSO, never in this app
+        accountUrl: ssoConfig() !== null ? accountUrl() : null,
+        // a visitor on a browser that may already be signed in at the SSO: the page checks once, quietly (src/server/silent.ts)
+        silentLogin: ssoConfig() !== null && mode === 'public' && cookieValue(req.headers.get('cookie'), SILENT_COOKIE) === undefined,
         tools: rule.tools,
         shell: rule.tools.includes('run_bash'),
         history: rule.store,
@@ -65,7 +70,10 @@ export const logout = (req: Request) =>
     const cfg = ssoConfig()
     const site = siteUrl(req)
     const next = cfg && s?.idToken ? `${cfg.issuer}/logout?${new URLSearchParams({ id_token_hint: s.idToken, ...(site ? { post_logout_redirect_uri: `${site}/` } : {}) })}` : null
-    return json({ ok: true, next }, 200, { 'Set-Cookie': `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}` })
+    const res = json({ ok: true, next }, 200, { 'Set-Cookie': `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}` })
+    // signing out must never sign straight back in through the silent check
+    res.headers.append('Set-Cookie', `${SILENT_COOKIE}=1; Path=/; Max-Age=${SILENT_SECONDS}; SameSite=Lax${secure}`)
+    return res
   })
 
 export const health = () => json({ ok: true })

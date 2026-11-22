@@ -15,6 +15,7 @@ import * as settings from '../core/settings.ts'
 import { call, FakeModel, freshEnv } from '../core/test-helpers.ts'
 import * as api from './api.ts'
 import { newSession, sealSession, SESSION_COOKIE } from './session.ts'
+import { SILENT_COOKIE } from './silent.ts'
 import { deps, shared } from './state.ts'
 
 let dir = ''
@@ -107,6 +108,11 @@ test('/api/me: visitor, user, shell user, admin; a forged or expired cookie is j
   assert.deepEqual([a.mode, a.address, a.capabilities.shell, a.capabilities.history], ['user', 'alice@example.com', false, 'user'])
   const v = await me()
   assert.deepEqual([v.mode, v.address, v.capabilities.tools, v.capabilities.login], ['public', null, [], true])
+  // account settings live at the SSO, and a visitor's browser is asked once (quietly) whether the SSO already knows it
+  assert.equal(v.capabilities.accountUrl, 'https://sso.test/account')
+  assert.equal(v.capabilities.silentLogin, true)
+  assert.equal(a.capabilities.silentLogin, false) // already signed in here
+  assert.equal((await me({ cookie: `${SILENT_COOKIE}=1` })).capabilities.silentLogin, false) // asked recently: not again yet
   const r = await me({ cookie: root() })
   assert.deepEqual([r.mode, r.capabilities.shell], ['user+shell', true])
   assert.equal((await me({ headers: { authorization: 'Bearer tok' } })).mode, 'admin')
@@ -116,12 +122,14 @@ test('/api/me: visitor, user, shell user, admin; a forged or expired cookie is j
   assert.equal((await me({ cookie: old })).mode, 'public') // past its 12 hours
   assert.equal((await req('GET', '/health')).json().ok, true)
   delete process.env.SSO_ISSUER
-  assert.equal((await me()).capabilities.login, false) // no SSO configured: sign-in is off
+  const off = (await me()).capabilities
+  assert.deepEqual([off.login, off.accountUrl, off.silentLogin], [false, null, false]) // no SSO configured: sign-in is off, nothing to link or ask
 })
 
 test('logout clears the cookie and refuses a foreign origin', async () => {
   const r = await req('POST', '/api/logout')
   assert.match(r.headers.get('set-cookie')!, /Max-Age=0/)
+  assert.match(r.headers.get('set-cookie')!, new RegExp(`${SILENT_COOKIE}=1`)) // so the silent check does not sign you straight back in
   assert.equal((await req('POST', '/api/logout', { headers: { origin: 'https://evil.example' } })).status, 403)
 })
 

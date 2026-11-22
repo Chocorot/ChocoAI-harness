@@ -38,7 +38,7 @@ Built with Next.js 16, Tailwind v4 and the shared `@chocorot/design` package (to
 ## App-feel rules (so it does not feel like a website)
 - The page never scrolls: `html, body { overflow: hidden; overscroll-behavior: none }`, the app is `100dvh` (or the visual viewport height while the keyboard is open, set from `visualViewport`). Only the message list and dialogs scroll.
 - Composer is pinned at the bottom with `env(safe-area-inset-bottom)`; the textarea is `text-base` (16 px, so iOS does not zoom on focus); Enter sends on desktop, inserts a newline on touch devices (`pointer: coarse`).
-- Desktop sidebar (signed in): the menu button in the header closes/opens it and the choice is remembered (`choco-harness-sidebar`). On a phone the same button opens the Chats dialog.
+- **Header and sidebar (2026-11-22)**: everything about the sidebar is at its left edge. Desktop, sidebar open: the sidebar's top row has the brand and the **close button** (`PanelLeftClose`), its bottom row is the account row; closed: the header starts with the **open button** (`PanelLeftOpen`), the brand and New chat (`SquarePen`). The choice is remembered (`choco-harness-sidebar`). Phone: the first button is **Chats** (opens the Chats dialog). The chat title is in the header (fixed 52 px height, so nothing jumps), the account at the right (not shown while the sidebar is open: its account row replaces it). A visitor sees a **Sign in** button in the header. Chats in the list are grouped Today / Yesterday / Previous 7 days / Older (`ui/lib/group.ts`). Code: `ui/chat-header.tsx`, `ui/chat-list.tsx`.
 - No native `alert/confirm/prompt`: confirm dialogs, second-press buttons and toasts instead.
 - Installable: manifest (`display: standalone`), icons, `apple-mobile-web-app-*` tags (from the Next metadata), service worker (`public/sw.js`: network first, cache as offline fallback; `/api`, `/manage` and `/task` never cached; registered in production only). The Account dialog shows Install when the browser offers it, and a hint on iOS.
 - Code blocks and tables scroll sideways inside their own box.
@@ -46,7 +46,7 @@ Built with Next.js 16, Tailwind v4 and the shared `@chocorot/design` package (to
 ## Design rules: the shared Choco design
 Source of truth: repo `ChocoHost-Design` (`@chocorot/design`), its `docs/design-rules.md` and `docs/tokens.md`. status, mail, the SSO and this app use the same package.
 - Tokens and base CSS come from the package (`globals.css` imports them). **Never add or override a shared token here**; change it in the design repo. Components come from `@chocorot/design/ui/*` and the header from `@chocorot/design/shell/app-header`.
-- The brand tile is `BrandMark` with a lucide `Sparkles` icon (the header and the empty state); the app icons and favicon are the shared brand set, installed into `public/icons` (branding-and-seo.md).
+- The brand tile is `BrandMark` with **`ChocoAiMark`** (`ui/brand-icon.tsx`): the speech bubble with a four-point spark, the SAME drawing as `public/icons/mark.svg` and the app icon (the page used a lucide `Sparkles` until 2026-11-22, which did not match the favicon); it is used in the header, the sidebar, the empty state and next to every assistant message; the app icons and favicon are the shared brand set, installed into `public/icons` (branding-and-seo.md).
 - Theme (System / Light / Dark) is the shared `ThemeProvider` (`next-themes`, class strategy, key `choco-theme`, plus a `choco-theme` cookie on `.chocorot.net` so the choice follows you between the sites).
 - Colour is never the only signal (icons on tool state, error kind, plan state). Status colours come from tokens, never raw colours.
 - Motion comes from the package (`MotionProvider`, reduced motion honoured). Content is visible without it.
@@ -64,5 +64,5 @@ Source of truth: repo `ChocoHost-Design` (`@chocorot/design`), its `docs/design-
 ## Known gaps
 - Thinking text is not stored with saved messages (needs a stored field and stripping it from what is sent to the model).
 - No regenerate for saved chats (the server has no "drop last reply" yet); visitors have it.
-- The chat title is a thin line under the header, not in the header (the shared `AppHeader` has no title slot).
+- The page uses its own small header (`ui/chat-header.tsx`), not the shared `AppHeader`, because that one has no left slot for the sidebar button and no title (the design package is unchanged).
 - The install-dialog screenshots and the social preview image still show the previous UI (branding-and-seo.md).

@@ -11,6 +11,10 @@ export type Me = {
   address: string | null
   capabilities: {
     login: boolean
+    /** Where name, password and devices are managed: the SSO. Null without one. */
+    accountUrl?: string | null
+    /** A visitor who may already be signed in at the SSO: the page checks once, quietly. */
+    silentLogin?: boolean
     tools: string[]
     shell: boolean
     history: 'user' | 'client'

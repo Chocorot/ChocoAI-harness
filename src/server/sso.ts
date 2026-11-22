@@ -36,6 +36,12 @@ export function ssoConfig(env: Record<string, string | undefined> = process.env)
   return { issuer, clientId, clientSecret, redirectUri }
 }
 
+/** Where this person manages their account (name, password, signed-in devices): always the SSO, never this app. Null without an SSO. */
+export const accountUrl = (env: Record<string, string | undefined> = process.env): string | null => {
+  const issuer = env.SSO_ISSUER?.trim().replace(/\/+$/, '')
+  return issuer ? `${issuer}/account` : null
+}
+
 /** Only same-origin paths (an open redirect after login is a phishing primitive). */
 export function safeNext(raw: string | null | undefined): string {
   if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/'
@@ -49,12 +55,14 @@ export interface Flow {
   nonce: string
   verifier: string
   next: string
+  /** A silent check (`prompt=none`): is this browser already signed in at the SSO? Any answer but a code is quiet, never an error to show. */
+  silent?: boolean
 }
 
-export const newFlow = (next: string): { flow: Flow; challenge: string } => {
+export const newFlow = (next: string, silent = false): { flow: Flow; challenge: string } => {
   const verifier = randomBytes(32).toString('base64url')
   return {
-    flow: { state: randomBytes(16).toString('base64url'), nonce: randomBytes(16).toString('base64url'), verifier, next: safeNext(next) },
+    flow: { state: randomBytes(16).toString('base64url'), nonce: randomBytes(16).toString('base64url'), verifier, next: safeNext(next), ...(silent ? { silent: true } : {}) },
     challenge: createHash('sha256').update(verifier).digest('base64url'),
   }
 }
@@ -70,6 +78,7 @@ export function authorizeUrl(cfg: SsoConfig, flow: Flow, challenge: string): str
     nonce: flow.nonce,
     code_challenge: challenge,
     code_challenge_method: 'S256',
+    ...(flow.silent ? { prompt: 'none' } : {}),
   }).toString()
   return u.toString()
 }
@@ -87,7 +96,7 @@ export async function openFlow(token: string | undefined, now = Date.now()): Pro
     const { plaintext } = await compactDecrypt(token, sessionKey())
     const f = JSON.parse(new TextDecoder().decode(plaintext)) as Flow & { exp: number }
     if (typeof f.exp !== 'number' || f.exp < now || !f.state || !f.nonce || !f.verifier) return null
-    return { state: f.state, nonce: f.nonce, verifier: f.verifier, next: safeNext(f.next) }
+    return { state: f.state, nonce: f.nonce, verifier: f.verifier, next: safeNext(f.next), ...(f.silent === true ? { silent: true } : {}) }
   } catch {
     return null
   }

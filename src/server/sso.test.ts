@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 process.env.AUTH_SECRET = 'ab'.repeat(32)
-const { authorizeUrl, completeLogin, newFlow, openFlow, roleFromClaims, safeNext, sealFlow, ssoConfig, SsoError } = await import('./sso.ts')
+const { accountUrl, authorizeUrl, completeLogin, newFlow, openFlow, roleFromClaims, safeNext, sealFlow, ssoConfig, SsoError } = await import('./sso.ts')
 type SsoConfig = Parameters<typeof authorizeUrl>[0]
 
 const cfg: SsoConfig = { issuer: 'https://sso.test', clientId: 'ai', clientSecret: 's3cret', redirectUri: 'https://ai.test/api/auth/sso/callback' }
@@ -112,5 +112,52 @@ test('redirects use the public address, never the container bind address (http:/
     assert.equal(r.headers.get('location'), 'https://ai.chocorot.net/?signin=error')
   } finally {
     for (const [k, v] of [['HARNESS_PUBLIC_URL', was.url], ['HARNESS_TRUST_PROXY', was.proxy]] as const) v === undefined ? delete process.env[k] : (process.env[k] = v)
+  }
+})
+
+test('a silent flow asks the SSO with prompt=none and survives the encrypted flow cookie; a normal flow never does', async () => {
+  const normal = newFlow('/c', false)
+  assert.equal(new URL(authorizeUrl(cfg, normal.flow, normal.challenge)).searchParams.get('prompt'), null)
+  assert.equal(normal.flow.silent, undefined)
+  const silent = newFlow('/c', true)
+  assert.equal(new URL(authorizeUrl(cfg, silent.flow, silent.challenge)).searchParams.get('prompt'), 'none')
+  assert.equal((await openFlow(await sealFlow(silent.flow)))?.silent, true)
+  assert.equal((await openFlow(await sealFlow(normal.flow)))?.silent, undefined)
+})
+
+test('accountUrl is the SSO account page, and nothing without an SSO', () => {
+  assert.equal(accountUrl({ SSO_ISSUER: 'https://sso.test/' }), 'https://sso.test/account')
+  assert.equal(accountUrl({}), null)
+})
+
+test('the silent check: any answer but a code is quiet (visitor, no toast, remembered); a code signs in; a normal error still shows', async () => {
+  const { ssoCallback, ssoStart } = await import('./auth-routes.ts')
+  const { SILENT_COOKIE } = await import('./silent.ts')
+  const was = Object.fromEntries(['SSO_ISSUER', 'SSO_CLIENT_ID', 'SSO_CLIENT_SECRET', 'SSO_REDIRECT_URI', 'HARNESS_PUBLIC_URL'].map((k) => [k, process.env[k]]))
+  try {
+    Object.assign(process.env, { SSO_ISSUER: 'https://sso.test', SSO_CLIENT_ID: 'ai', SSO_CLIENT_SECRET: 's', SSO_REDIRECT_URI: 'https://ai.test/api/auth/sso/callback', HARNESS_PUBLIC_URL: 'https://ai.test' })
+    const start = await ssoStart(new Request('https://ai.test/api/auth/sso/start?silent=1&next=%2F%23%2Fc%2F7'))
+    const to = new URL(start.headers.get('location')!)
+    assert.equal(to.origin + to.pathname, 'https://sso.test/authorize')
+    assert.equal(to.searchParams.get('prompt'), 'none')
+    const flowCookie = start.headers.get('set-cookie')!.split(';')[0]!
+    const back = (qs: string, cookie = flowCookie) => ssoCallback(new Request(`https://ai.test/api/auth/sso/callback?${qs}`, { headers: { cookie } }))
+
+    for (const e of ['login_required', 'interaction_required', 'access_denied', 'account_selection_required']) {
+      const r = await back(`error=${e}&state=${to.searchParams.get('state')}`)
+      assert.equal(r.headers.get('location'), 'https://ai.test/#/c/7', e) // back where it was, no ?signin=, nothing to toast
+      assert.match(r.headers.get('set-cookie')!, new RegExp(`${SILENT_COOKIE}=1`), e) // and do not ask again for a while
+    }
+    // a silent flow that comes back WITHOUT a code or error is quiet too (never an error page)
+    assert.equal((await back('')).headers.get('location'), 'https://ai.test/#/c/7')
+
+    // a NORMAL flow keeps showing errors: the click on "Sign in" must say when it failed
+    const normal = await ssoStart(new Request('https://ai.test/api/auth/sso/start'))
+    const nc = normal.headers.get('set-cookie')!.split(';')[0]!
+    const r = await back('error=access_denied&state=x', nc)
+    assert.equal(r.headers.get('location'), 'https://ai.test/?signin=denied')
+    assert.doesNotMatch(r.headers.get('set-cookie')!, new RegExp(SILENT_COOKIE))
+  } finally {
+    for (const [k, v] of Object.entries(was)) v === undefined ? delete process.env[k] : (process.env[k] = v)
   }
 })

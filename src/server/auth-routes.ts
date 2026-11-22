@@ -3,6 +3,7 @@ import { isAllowed } from '../core/auth.ts'
 import * as settings from '../core/settings.ts'
 import { siteUrl } from './http.ts'
 import { authorizeUrl, completeLogin, FLOW_COOKIE, FLOW_SECONDS, newFlow, openFlow, sameSecret, sealFlow, ssoConfig } from './sso.ts'
+import { SILENT_COOKIE, SILENT_SECONDS } from './silent.ts'
 import { cookieValue, newSession, SESSION_COOKIE, SESSION_SECONDS, sealSession } from './session.ts'
 
 const secure = (): string => (process.env.NODE_ENV === 'production' ? '; Secure' : '')
@@ -13,6 +14,7 @@ const redirect = (to: string, cookies: string[]): Response => {
   for (const c of cookies) h.append('Set-Cookie', c)
   return new Response(null, { status: 303, headers: h })
 }
+const silentCookie = (): string => `${SILENT_COOKIE}=1; Path=/; Max-Age=${SILENT_SECONDS}; SameSite=Lax${secure()}`
 const clearFlow = `${FLOW_COOKIE}=; Path=/api/auth/sso; Max-Age=0; HttpOnly; SameSite=Lax${secure()}`
 
 /** Begin the sign-in: remember state/nonce/PKCE verifier in a short-lived encrypted cookie, then go to the SSO. */
@@ -20,7 +22,8 @@ export async function ssoStart(req: Request): Promise<Response> {
   const origin = originOf(req)
   const cfg = ssoConfig()
   if (!cfg) return redirect(`${origin}/`, [])
-  const { flow, challenge } = newFlow(new URL(req.url).searchParams.get('next') ?? '')
+  const q = new URL(req.url).searchParams
+  const { flow, challenge } = newFlow(q.get('next') ?? '', q.get('silent') === '1')
   return redirect(authorizeUrl(cfg, flow, challenge), [`${FLOW_COOKIE}=${await sealFlow(flow)}; Path=/api/auth/sso; Max-Age=${FLOW_SECONDS}; HttpOnly; SameSite=Lax${secure()}`]) // Lax: it must come back on the top-level redirect
 }
 
@@ -33,6 +36,8 @@ export async function ssoCallback(req: Request): Promise<Response> {
   if (!cfg) return back('error')
   const flow = await openFlow(cookieValue(req.headers.get('cookie'), FLOW_COOKIE))
   const q = url.searchParams
+  // A silent check that found no sign-in (or no AI role, or a code still to give) is not an error: remember it for a while and carry on as a visitor.
+  if (flow?.silent && !q.get('code')) return redirect(`${origin}${flow.next}`, [clearFlow, silentCookie()])
   if (q.get('error') === 'access_denied') return back('denied')
   if (!flow || !q.get('code') || !q.get('state') || !sameSecret(q.get('state')!, flow.state)) return back('error')
   if (q.get('iss') !== null && q.get('iss') !== cfg.issuer) return back('error') // RFC 9207 mix-up defence

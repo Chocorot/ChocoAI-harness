@@ -1,6 +1,6 @@
 'use client'
 
-import { Download, LogIn, LogOut, Monitor, Moon, Sun, Trash2 } from 'lucide-react'
+import { Download, LogIn, LogOut, Monitor, Moon, Sun, Trash2, UserCog } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
 import { Avatar, AvatarFallback } from '@chocorot/design/ui/avatar'
@@ -40,6 +40,10 @@ export function AccountDialog({ open, onOpenChange, me, hasPublicChat, install, 
               {me.capabilities.login ? <Button className="w-full" onClick={() => location.assign('/api/auth/sso/start')}><LogIn /> Sign in with Choco</Button> : null}
             </>
           )}
+          {signedIn && me.capabilities.accountUrl ? (
+            <Button variant="outline" className="w-full" asChild><a href={me.capabilities.accountUrl}><UserCog /> Account settings</a></Button>
+          ) : null}
+          {signedIn ? <p className="text-muted-foreground -mt-1 text-xs">Your name, password and signed-in devices are managed in your Choco account.</p> : null}
           <div className="grid grid-cols-3 gap-2" role="group" aria-label="Theme">
             {THEMES.map(([id, Icon, label]) => <Button key={id} variant={theme === id ? 'default' : 'outline'} aria-pressed={theme === id} onClick={() => setTheme(id)}><Icon /> {label}</Button>)}
           </div>
