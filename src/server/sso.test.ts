@@ -26,13 +26,22 @@ test('a good token gives the user with the role from the claim', async () => {
   assert.equal(idToken.split('.').length, 3) // kept for the sign-out redirect (id_token_hint)
   assert.equal((await login({ roles: ['shell'] })).role, 'shell')
   assert.equal((await login({ roles: ['user', 'shell'] })).role, 'shell')
+  assert.equal((await login({ amr: ['pwd'] })).role, 'user') // a plain user signs in with the password alone
+})
+
+test('the shell role needs the authenticator code behind the sign-in; without it the person is a plain user', async () => {
+  const noCode = await login({ roles: ['user', 'shell'], amr: ['pwd'] })
+  assert.deepEqual([noCode.role, noCode.roles], ['user', ['user', 'user']])
+  const shellOnly = await login({ roles: ['shell'], amr: ['pwd'] })
+  assert.deepEqual([shellOnly.role, shellOnly.roles], ['user', ['user']]) // never refused, never a shell
+  assert.equal((await login({ roles: ['shell'], amr: ['pwd', 'otp'] })).role, 'shell')
 })
 
 test('every kind of bad token is refused', async () => {
   const bad: [string, Over][] = [
     ['wrong audience', { aud: 'mail' }], ['wrong issuer', { iss: 'https://evil.test' }], ['expired', { exp: Math.floor(Date.now() / 1000) - 3600 }],
     ['signed by another key', { key: other.privateKey }], ['no nonce', { nonce: undefined }], ['wrong nonce', { nonce: 'not-ours' }],
-    ['password only (no otp)', { amr: ['pwd'] }], ['email not verified', { verified: false }], ['no roles', { roles: [] }], ['roles missing', { roles: undefined }], ['unknown role only', { roles: ['viewer'] }], ['admin is not an AI role', { roles: ['admin'] }],
+    ['no password step', { amr: [] }], ['email not verified', { verified: false }], ['no roles', { roles: [] }], ['roles missing', { roles: undefined }], ['unknown role only', { roles: ['viewer'] }], ['admin is not an AI role', { roles: ['admin'] }],
   ]
   for (const [why, o] of bad) await assert.rejects(login(o), SsoError, why)
 })

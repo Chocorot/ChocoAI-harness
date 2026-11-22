@@ -2,9 +2,9 @@
  * Sign-in through the Choco SSO (OpenID Connect, authorization code + PKCE). Same flow as status and mail.
  * The SSO's side: repo ChocoHost-SSO, docs/oidc.md. Our side of the contract:
  *
- *  - the SSO has already checked password + authenticator code and that this
- *    user has a role for the `ai` client; we still verify the ID token
- *    (signature, issuer, audience, expiry, nonce) and that BOTH factors ran (`amr`);
+ *  - the SSO has already checked the password and that this user has a role for the `ai` client; we still verify the ID token
+ *    (signature, issuer, audience, expiry, nonce) and that the password step ran (`amr` has `pwd`). The authenticator code is only asked
+ *    for the `shell` role: a `shell` role in a token whose `amr` has no `otp` is treated as a plain `user` (never as a shell);
  *  - the SSO's `roles` claim for the `ai` client decides access: `user` = chat + tools without the shell, `shell` = the same plus the
  *    shell tool; no such role = no access, whatever else the token says;
  *  - `state` + PKCE + nonce tie the callback to the browser that started it.
@@ -153,9 +153,14 @@ export async function completeLogin(
   }
   if (typeof payload.nonce !== 'string' || !sameSecret(payload.nonce, args.flow.nonce)) throw new SsoError('nonce mismatch')
   const amr = Array.isArray(payload.amr) ? payload.amr : []
-  if (!amr.includes('pwd') || !amr.includes('otp')) throw new SsoError('both sign-in steps are required')
+  if (!amr.includes('pwd')) throw new SsoError('the password sign-in step is required')
   if (typeof payload.email !== 'string' || payload.email_verified !== true || typeof payload.sub !== 'string') throw new SsoError('token has no verified email')
-  const role = roleFromClaims(payload.roles)
+  // The shell is the one dangerous role: without the authenticator code behind this sign-in it is only a plain `user` (the SSO normally asks for the code first).
+  const claimed = (Array.isArray(payload.roles) ? payload.roles : []).filter((r): r is string => typeof r === 'string')
+  const downgraded = claimed.includes('shell') && !amr.includes('otp')
+  if (downgraded) console.warn('[sso] shell role dropped: this sign-in had no authenticator code')
+  const roles = downgraded ? claimed.map((r) => (r === 'shell' ? 'user' : r)) : claimed
+  const role = roleFromClaims(roles)
   if (!role) throw new SsoError('account has no AI role')
-  return { sub: payload.sub, email: payload.email.toLowerCase().trim(), name: typeof payload.name === 'string' ? payload.name : null, role, roles: (payload.roles as string[]).filter((r) => typeof r === 'string'), sid: typeof payload.sid === 'string' ? payload.sid : null, idToken: body.id_token }
+  return { sub: payload.sub, email: payload.email.toLowerCase().trim(), name: typeof payload.name === 'string' ? payload.name : null, role, roles, sid: typeof payload.sid === 'string' ? payload.sid : null, idToken: body.id_token }
 }
